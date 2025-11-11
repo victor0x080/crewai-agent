@@ -1,0 +1,144 @@
+# CrewAI Event Broadcasting Policies
+# Defines which agent activities should be broadcast to Redis Streams
+
+version: 1
+
+defaults:
+  min_similarity: 0.62        # global default cosine threshold
+  require_llm_check: false     # global default: embeddings-only
+  dedupe_window_seconds: 900   # drop duplicates within 15 minutes
+  redact:
+    enabled: true
+    pii_patterns:
+      - "(?i)\\b(ssn|social[- ]?security)\\b:\\s*\\d{3}-\\d{2}-\\d{4}"
+      - "(?i)\\b(api[_-]?key|secret|token|password)\\b\\s*[:=]\\s*[A-Za-z0-9_\\-]{16,}"
+      - "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b"   # credit card
+      - "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"  # email (optional)
+
+policies:
+  # High-value agent outcomes
+  - name: strategic_insights
+    description: Broadcast strategic plan analysis and recommendations
+    topics: ["stream:agents:insights:v1"]
+    when:
+      event_types: ["agent_execution_completed", "task_completed"]
+      require_success: true
+      agents_allowlist: ["Strategic Plan*", "Plan Review*", "*Analyst*"]
+      min_tokens: 50
+    semantics:
+      goal_vectors:
+        - "strategic recommendations, business insights, market analysis, competitive intelligence"
+        - "revenue targets, growth opportunities, strategic initiatives, KPI analysis"
+        - "plan alignment, budget allocation, resource optimization"
+      min_similarity: 0.68
+      fields: ["output", "metadata.reasoning_summary", "inputs.query"]
+    llm_check:
+      enabled: true
+      prompt: |
+        Determine if this agent output contains strategic business value worth broadcasting.
+        Return JSON: {"broadcast": true|false, "tags": ["strategy"|"financial"|"operational"], "reason": "..."}
+        Only broadcast if it contains actionable insights or important findings.
+      max_tokens: 100
+      temperature: 0.0
+
+  # Data query results
+  - name: data_query_results
+    description: Broadcast significant data query findings
+    topics: ["stream:agents:data-results:v1"]
+    when:
+      event_types: ["agent_execution_completed"]
+      agents_allowlist: ["Data Query*", "*Query Specialist*"]
+      require_success: true
+      min_tokens: 30
+    semantics:
+      goal_vectors:
+        - "data findings, query results, metric trends, anomaly detection"
+        - "sales performance, customer behavior, revenue analysis"
+      min_similarity: 0.64
+      fields: ["output", "metadata.query_result"]
+    novelty:
+      enabled: true
+      memory_scope: "entity"
+      min_diff_ratio: 0.15
+
+  # System alerts and monitoring
+  - name: system_alerts
+    description: Broadcast critical system events and alerts
+    topics: ["stream:alerts:v1"]
+    when:
+      event_types: ["agent_execution_completed", "tool_usage_finished"]
+      agents_allowlist: ["Stream Capture*", "*Monitor*"]
+      require_success: true
+    semantics:
+      goal_vectors:
+        - "threshold violations, pattern matches, anomalies, critical alerts"
+        - "inventory alerts, price changes, stock updates, system errors"
+      min_similarity: 0.70
+      fields: ["output", "metadata.alert_type", "metadata.severity"]
+    llm_check:
+      enabled: false  # Alerts are time-sensitive, skip LLM
+
+  # External system integration results
+  - name: system_call_results
+    description: Broadcast results from external system calls
+    topics: ["stream:agents:system-results:v1"]
+    when:
+      event_types: ["agent_execution_completed", "tool_usage_finished"]
+      agents_allowlist: ["System Call*", "*Integration*"]
+      tools_allowlist: ["call_*_api", "post_to_*", "send_*"]
+    semantics:
+      goal_vectors:
+        - "CRM updates, API call results, integration status, webhook responses"
+        - "Salesforce leads, HubSpot contacts, Slack notifications, email delivery"
+      min_similarity: 0.62
+      fields: ["output", "metadata.system", "metadata.action"]
+    llm_check:
+      enabled: false
+
+  # Tool execution analytics
+  - name: tool_analytics
+    description: Emit tool usage metrics for observability
+    topics: ["stream:analytics:tools:v1"]
+    when:
+      event_types: ["tool_usage_finished"]
+      tools_allowlist: ["*"]  # All tools
+    semantics:
+      goal_vectors:
+        - "tool performance, execution time, success rate, error codes"
+        - "API latency, query performance, integration health"
+      min_similarity: 0.55
+      fields: ["metadata.tool_result_summary", "metadata.execution_time", "metadata.error"]
+    llm_check:
+      enabled: false
+
+  # Agent errors and failures
+  - name: agent_failures
+    description: Broadcast agent failures for debugging and alerting
+    topics: ["stream:alerts:agent-failures:v1"]
+    when:
+      event_types: ["agent_execution_completed", "task_completed"]
+      require_success: false  # Only failures
+      agents_allowlist: ["*"]
+    semantics:
+      goal_vectors:
+        - "agent errors, task failures, execution problems, exceptions"
+        - "timeout, invalid input, API errors, unexpected results"
+      min_similarity: 0.50
+      fields: ["metadata.error", "metadata.error_type", "output"]
+    llm_check:
+      enabled: false  # Failures need immediate broadcast
+
+  # High-cost operations (for budget monitoring)
+  - name: expensive_operations
+    description: Track high-cost LLM operations
+    topics: ["stream:analytics:costs:v1"]
+    when:
+      event_types: ["agent_execution_completed"]
+      min_tokens: 5000  # Only expensive calls
+    semantics:
+      goal_vectors:
+        - "expensive operations, high token usage, cost monitoring"
+      min_similarity: 0.50
+      fields: ["metadata.tokens", "metadata.cost", "agent.name"]
+    llm_check:
+      enabled: false

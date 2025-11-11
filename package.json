@@ -1,0 +1,32 @@
+{
+  "name": "ims-agent-backend",
+  "version": "1.0.0",
+  "description": "IMS Agent Workflow Backend - Clean Implementation",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "keywords": [
+    "agent",
+    "workflow",
+    "crewai",
+    "redis",
+    "openai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.4",
+    "dotenv": "^16.3.1",
+    "ioredis": "^5.3.2",
+    "openai": "^4.20.1",
+    "redis": "^5.9.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+logs/
+.env
+.pids
+venv/
+.vscode/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
