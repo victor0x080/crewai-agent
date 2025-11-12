@@ -56,8 +56,11 @@ export default class CrewAIBridgeService {
    * Agents listen to different streams based on their role in the workflow
    */
   getAgentStream(agentId) {
-    // Normalize agent ID (lowercase, remove special chars)
-    const normalizedId = agentId.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    // Normalize agent ID for stream names (must match Python normalization)
+    // Python uses: re.sub(r'[^a-z0-9-]', '-', agent_id.lower())
+    let normalizedId = agentId.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    normalizedId = normalizedId.replace(/-+/g, '-');  // Collapse multiple dashes
+    normalizedId = normalizedId.replace(/^-|-$/g, '');  // Remove leading/trailing dashes
     // Alias map to match runner group ids that differ from registry ids
     const aliasMap = {
       'ingress-normalization': 'ingress-normalizer',
@@ -173,7 +176,10 @@ export default class CrewAIBridgeService {
   async monitorAgentOutputStreams(agentId, taskId, timeout) {
     logger.info(`🔍 Starting to monitor agent output stream`, { agentId, taskId, timeout });
     
-    const normalizedId = agentId.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    // Normalize agent ID (must match getAgentStream normalization)
+    let normalizedId = agentId.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    normalizedId = normalizedId.replace(/-+/g, '-');  // Collapse multiple dashes
+    normalizedId = normalizedId.replace(/^-|-$/g, '');  // Remove leading/trailing dashes
     const aliasMap = {
       'ingress-normalization': 'ingress-normalizer',
       'question-router-planner': 'qrp-planner',

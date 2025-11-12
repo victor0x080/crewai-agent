@@ -38,6 +38,39 @@ echo "HTTP $HTTP_STATUS"
 echo "Saved response: $RESP_FILE"
 
 if [ "$HAS_JQ" -eq 1 ]; then
+  echo "\n📊 Confidence Scores:"
+  jq -r '
+    (.agentResults.discovery // {})
+    | if .confidenceScores and (.confidenceScores | length > 0) then
+        "Selected Agents Confidence:",
+        (.confidenceScores[] | "  - \(.agentName // .agentId): \(.confidence // "N/A" | tostring | .[0:5])"),
+        ""
+      elif .topConfidenceScores and (.topConfidenceScores | length > 0) then
+        "Top 5 Agent Confidence Scores:",
+        (.topConfidenceScores[] | "  - \(.agentName // .agentId): \(.confidence | tostring | .[0:5])"),
+        ""
+      else
+        "  (No confidence scores available)"
+      end,
+    if .threshold then "Threshold: \(.threshold)", "" else "" end,
+    if .maxConfidence then "Max Confidence: \(.maxConfidence | tostring | .[0:5])", "" else "" end,
+    if .dynamicAgentCreated then
+      "\n🔧 Dynamic Agent Created:",
+      "  Agent ID: \(.agentId // "N/A")",
+      "  Agent Name: \(.agentSpec.agentName // "N/A")",
+      "  Role: \(.agentSpec.role // "N/A")",
+      "  Goal: \(.agentSpec.goal // "N/A")",
+      "  Capabilities: \(.agentSpec.capabilities // [] | join(", "))",
+      "",
+      "  Algorithms (\(.agentSpec.algorithms | length)):",
+      (.agentSpec.algorithms // [] | .[] | "    - \(.name): \(.description // "")"),
+      "",
+      "  Expected Insights:",
+      (.agentSpec.expectedInsights // [] | .[] | "    - \(.)"),
+      ""
+    else "" end
+  ' "$RESP_FILE"
+
   echo "\nAgents used:"
   jq -r '
     def ok(b): if b then "OK" else "ERR" end;
@@ -80,6 +113,55 @@ except Exception as e:
   print("Failed to read response:", e)
   raise SystemExit(0)
 results=(d.get("agentResults") or {}).get("results") or []
+discovery=(d.get("agentResults") or {}).get("discovery") or {}
+print("\n📊 Confidence Scores:")
+if discovery.get("confidenceScores"):
+  print("Selected Agents Confidence:")
+  for cs in discovery["confidenceScores"]:
+    name=cs.get("agentName") or cs.get("agentId") or "-"
+    conf=cs.get("confidence")
+    print(f"  - {name}: {conf:.3f}" if conf is not None else f"  - {name}: N/A")
+  print()
+elif discovery.get("topConfidenceScores"):
+  print("Top 5 Agent Confidence Scores:")
+  for cs in discovery["topConfidenceScores"]:
+    name=cs.get("agentName") or cs.get("agentId") or "-"
+    conf=cs.get("confidence")
+    print(f"  - {name}: {conf:.3f}" if conf is not None else f"  - {name}: N/A")
+  print()
+else:
+  print("  (No confidence scores available)")
+  print()
+if discovery.get("threshold"):
+  print(f"Threshold: {discovery['threshold']}")
+  print()
+if discovery.get("maxConfidence") is not None:
+  print(f"Max Confidence: {discovery['maxConfidence']:.3f}")
+  print()
+
+# Display dynamic agent information if created
+if discovery.get("dynamicAgentCreated"):
+  print("\n🔧 Dynamic Agent Created:")
+  print(f"  Agent ID: {discovery.get('agentId', 'N/A')}")
+  agent_spec = discovery.get("agentSpec", {})
+  print(f"  Agent Name: {agent_spec.get('agentName', 'N/A')}")
+  print(f"  Role: {agent_spec.get('role', 'N/A')}")
+  print(f"  Goal: {agent_spec.get('goal', 'N/A')}")
+  capabilities = agent_spec.get('capabilities', [])
+  print(f"  Capabilities: {', '.join(capabilities) if capabilities else 'N/A'}")
+  print()
+  algorithms = agent_spec.get('algorithms', [])
+  print(f"  Algorithms ({len(algorithms)}):")
+  for algo in algorithms:
+    print(f"    - {algo.get('name', 'Unknown')}: {algo.get('description', '')[:80]}")
+  print()
+  insights = agent_spec.get('expectedInsights', [])
+  if insights:
+    print("  Expected Insights:")
+    for insight in insights:
+      print(f"    - {insight}")
+    print()
+
 print("\nAgents used:")
 for r in results:
   name=r.get("agentName") or r.get("agentId") or "-"

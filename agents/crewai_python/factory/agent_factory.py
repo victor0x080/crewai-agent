@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from crewai import Agent
 import openai
 
-from tool_registry import get_tool_registry, ToolRegistry
-from tools.redis_streams_tools import RedisStreamsClient, redis_publish, redis_ack, redis_xreadgroup
-from tools.cloudevents_tools import publish_cloudevent, fetch_cloudevent, validate_against_schema, fetch_schema
+from factory.tool_registry import get_tool_registry, ToolRegistry
+from tools.redis_streams_tools import RedisStreamsClient
+from tools.redis_streams_tools import publish_cloudevent, fetch_cloudevent, fetch_schema, validate_against_schema, redis_ack
 from tools.ontology_tools import resolve_concept, expand_concepts, map_enum, get_category_constraints
 
 
@@ -349,10 +349,12 @@ Return ONLY the JSON object, nothing else.
         seen = set()
         
         # REQUIRED: Core Redis Streams tools (all agents need these)
+        # Note: consume_stream is used internally by runners, not as a CrewAI tool
+        # Agents use publish_cloudevent to publish results, not the raw function
         core_redis_tools = [
-            redis_publish,      # Publish to streams
-            redis_ack,          # Acknowledge messages
-            redis_xreadgroup    # Read from consumer groups
+            publish_cloudevent,  # Publish CloudEvents to streams (decorated with @tool)
+            redis_ack            # Acknowledge messages (decorated with @tool)
+            # consume_stream is NOT a tool - it's used by runners to consume tasks
         ]
         for tool in core_redis_tools:
             tool_id = id(tool)

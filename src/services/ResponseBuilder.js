@@ -128,7 +128,8 @@ export default class ResponseBuilder {
         summary: agentResults.summary || null,
         metrics: agentResults.metrics || null,
         timeout: agentResults.timeout || false,
-        error: agentResults.error || null
+        error: agentResults.error || null,
+        discovery: agentResults.discovery || null  // Include discovery metadata (confidence scores, dynamic agent info)
       } : null,
       processedAt: new Date().toISOString(),
       requestId,

@@ -27,6 +27,10 @@ from tools.simulation_tools import (
     run_simulation_scenario,
     compute_stockout_risk
 )
+from tools.algorithm_comparison_tool import (
+    compare_algorithm_results,
+    synthesize_multi_algorithm_insights
+)
 
 
 class ToolRegistry:
@@ -243,11 +247,14 @@ class ToolRegistry:
             'campaign': [
                 fetch_campaign_performance,
                 publish_platform_action,
-                validate_against_schema
+                validate_against_schema,
+                compare_algorithm_results,
+                synthesize_multi_algorithm_insights
             ],
             'attribution': [
                 fetch_campaign_performance,
-                fetch_demand_forecast_signal
+                fetch_demand_forecast_signal,
+                compare_algorithm_results
             ],
             'elasticity': [
                 fetch_pricing_promo_data,
@@ -286,6 +293,10 @@ class ToolRegistry:
             'fetch_campaign_performance': fetch_campaign_performance,
             'run_simulation_scenario': run_simulation_scenario,
             'compute_stockout_risk': compute_stockout_risk,
+            
+            # Algorithm Comparison Tools
+            'compare_algorithm_results': compare_algorithm_results,
+            'synthesize_multi_algorithm_insights': synthesize_multi_algorithm_insights,
         }
     
     def get_capability_vocabulary(self) -> List[str]:
