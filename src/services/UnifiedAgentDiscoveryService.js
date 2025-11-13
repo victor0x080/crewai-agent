@@ -99,46 +99,91 @@ export default class UnifiedAgentDiscoveryService {
         agent.category
       ].join(' ').toLowerCase();
 
-      // Factor 1: Direct keyword matching (0-0.4 weight)
+      // Factor 1: Direct keyword matching (0-0.45 weight) - Balanced
       let keywordScore = 0;
       let matchedKeywords = 0;
       
+      // Helper function for partial/fuzzy matching (more strict - only exact or close matches)
+      const fuzzyMatch = (text, word) => {
+        const lowerText = text.toLowerCase();
+        const lowerWord = word.toLowerCase();
+        // Exact match
+        if (lowerText.includes(lowerWord)) return 1.0;
+        // Partial match only for longer words (4+ chars)
+        if (lowerWord.length >= 4) {
+          // Check if word starts with same 4 chars or contains 4-char substring
+          const prefix = lowerWord.substring(0, 4);
+          if (lowerText.includes(prefix)) return 0.6; // Reduced from 0.7
+        }
+        return 0;
+      };
+      
       for (const word of queryWords) {
+        if (word.length < 3) continue; // Skip very short words
+        
+        // Check name/role (highest weight)
+        const nameMatch = fuzzyMatch(agent.name, word);
+        const roleMatch = fuzzyMatch(agent.role, word);
+        if (nameMatch > 0 || roleMatch > 0) {
+          keywordScore += (nameMatch || roleMatch) * 0.20; // Reduced from 0.25
+          matchedKeywords++;
+          continue;
+        }
+        
+        // Check agent ID
+        if (fuzzyMatch(agent.id, word) > 0) {
+          keywordScore += 0.15; // Reduced from 0.20
+          matchedKeywords++;
+          continue;
+        }
+        
+        // Check in agent text (capabilities, tools, category) - only exact matches
         if (agentText.includes(word)) {
-          // Exact match in name/role gets higher weight
-          if (agent.name.toLowerCase().includes(word) || agent.role.toLowerCase().includes(word)) {
-            keywordScore += 0.15;
-            matchedKeywords++;
-          } else if (agent.id.toLowerCase().includes(word)) {
-            keywordScore += 0.12;
-            matchedKeywords++;
-          } else if (agentText.includes(word)) {
-            keywordScore += 0.08;
-            matchedKeywords++;
-          }
+          keywordScore += 0.10; // Reduced from 0.12, removed fuzzy for text
+          matchedKeywords++;
         }
       }
       
-      // Normalize keyword score (more keywords = higher confidence, but with diminishing returns)
-      keywordScore = Math.min(0.4, keywordScore * (1 + matchedKeywords * 0.1));
+      // Boost for multiple keyword matches (moderate)
+      if (matchedKeywords > 1) {
+        keywordScore *= (1 + matchedKeywords * 0.12); // Reduced from 0.15
+      }
+      
+      // Additional boost: if query has domain-specific terms (reduced boost)
+      const domainTerms = ['marketing', 'sales', 'inventory', 'forecast', 'optimize', 'analysis', 'campaign'];
+      const hasDomainTerm = domainTerms.some(term => queryLower.includes(term));
+      if (hasDomainTerm && matchedKeywords > 0) {
+        keywordScore *= 1.1; // Reduced from 1.2 (10% boost instead of 20%)
+      }
+      
+      // Cap at 0.45 (reduced from 0.5)
+      keywordScore = Math.min(0.45, keywordScore);
       if (keywordScore > 0) {
         confidence += keywordScore;
         reasons.push(`keyword_match:${matchedKeywords}`);
       }
+      
+      // Base score: only if very low score (more strict)
+      if (matchedKeywords > 0 && keywordScore < 0.15 && confidence < 0.2) {
+        confidence += 0.05; // Reduced from 0.1
+        reasons.push('base_keyword_match');
+      }
 
-      // Factor 2: Capability matching (0-0.3 weight)
+      // Factor 2: Capability matching (0-0.4 weight) - INCREASED from 0.3
       const agentCapabilities = (agent.capabilities || []).map(c => c.toLowerCase());
       let capabilityScore = 0;
       const capabilityKeywords = [
-        { keywords: ['forecast', 'forecasting', 'demand', 'prediction'], caps: ['forecasting', 'demand_prediction'] },
-        { keywords: ['marketing', 'mix', 'mmm', 'media', 'campaign'], caps: ['campaign_planning', 'budget_allocation', 'channel_selection'] },
-        { keywords: ['elasticity', 'uplift', 'price', 'pricing'], caps: ['price_elasticity', 'promo_uplift'] },
-        { keywords: ['attribution', 'causal', 'incrementality'], caps: ['causal_analysis', 'attribution', 'impact_analysis'] },
-        { keywords: ['optimization', 'optimize', 'optimize', 'allocation'], caps: ['optimization', 'constraint_solving'] },
-        { keywords: ['simulation', 'scenario', 'what-if'], caps: ['scenario_simulation', 'monte_carlo'] },
-        { keywords: ['risk', 'stockout', 'inventory'], caps: ['risk_assessment', 'inventory_analysis'] },
-        { keywords: ['semantic', 'search', 'data', 'query'], caps: ['semantic_search', 'data_retrieval'] },
-        { keywords: ['synthesis', 'aggregate', 'combine'], caps: ['answer_synthesis', 'insight_aggregation'] }
+        { keywords: ['forecast', 'forecasting', 'demand', 'prediction', 'predict', 'future', 'projection'], caps: ['forecasting', 'demand_prediction', 'pipeline_forecasting', 'revenue_forecast'] },
+        { keywords: ['marketing', 'mix', 'mmm', 'media', 'campaign', 'advertising', 'promotion'], caps: ['campaign_planning', 'budget_allocation', 'channel_selection', 'campaign', 'campaign_mapping'] },
+        { keywords: ['elasticity', 'uplift', 'price', 'pricing', 'promo', 'discount'], caps: ['price_elasticity', 'promo_uplift', 'elasticity'] },
+        { keywords: ['attribution', 'causal', 'incrementality', 'impact', 'effect'], caps: ['causal_analysis', 'attribution', 'impact_analysis', 'closed_loop_attribution'] },
+        { keywords: ['optimization', 'optimize', 'optimise', 'allocation', 'allocate', 'budget'], caps: ['optimization', 'constraint_solving', 'budget_optimization', 'bid_optimization', 'portfolio_optimization'] },
+        { keywords: ['simulation', 'scenario', 'what-if', 'whatif', 'simulate'], caps: ['scenario_simulation', 'monte_carlo'] },
+        { keywords: ['risk', 'stockout', 'inventory', 'stock', 'safety'], caps: ['risk_assessment', 'inventory_analysis', 'stockout_prediction', 'inventory'] },
+        { keywords: ['semantic', 'search', 'data', 'query', 'retrieve', 'find'], caps: ['semantic_search', 'data_retrieval', 'vector_query'] },
+        { keywords: ['synthesis', 'aggregate', 'combine', 'summarize', 'summary'], caps: ['answer_synthesis', 'insight_aggregation', 'response_generation'] },
+        { keywords: ['sales', 'pipeline', 'booking', 'revenue'], caps: ['pipeline_forecasting', 'conversion_prediction', 'revenue_forecast'] },
+        { keywords: ['growth', 'opportunity', 'prioritize', 'segment'], caps: ['opportunity_scanning', 'gap_detection'] }
       ];
 
       for (const { keywords, caps } of capabilityKeywords) {
@@ -146,73 +191,108 @@ export default class UnifiedAgentDiscoveryService {
         const hasCapability = caps.some(cap => agentCapabilities.includes(cap));
         
         if (hasKeyword && hasCapability) {
-          capabilityScore += 0.15;
-        } else if (hasCapability && queryWords.some(qw => keywords.some(kw => kw.includes(qw) || qw.includes(kw)))) {
-          capabilityScore += 0.1;
+          capabilityScore += 0.18; // Reduced from 0.20
+        } else if (hasCapability) {
+          // More strict: require better partial match
+          const partialMatch = queryWords.some(qw => 
+            keywords.some(kw => kw.includes(qw) || qw.includes(kw) || 
+            (qw.length >= 4 && kw.includes(qw.substring(0, 4))) ||
+            (kw.length >= 4 && qw.includes(kw.substring(0, 4))))
+          );
+          if (partialMatch) {
+            capabilityScore += 0.12; // Reduced from 0.15
+          }
+          // Removed the "even more lenient" 0.05 base score
         }
       }
 
-      capabilityScore = Math.min(0.3, capabilityScore);
+      capabilityScore = Math.min(0.35, capabilityScore); // Reduced from 0.4
       if (capabilityScore > 0) {
         confidence += capabilityScore;
         reasons.push(`capability_match:${capabilityScore.toFixed(2)}`);
       }
+      // Removed the "capability_presence" bonus
 
-      // Factor 3: Intent alignment (0-0.2 weight)
+      // Factor 3: Intent alignment (0-0.22 weight) - Balanced
       const intentMapping = {
-        'analysis': ['sda', 'caa', 'asa'],
+        'analysis': ['sda', 'caa', 'asa', 'marketing-plan'],
         'simulation': ['ssa', 'ira'],
-        'question': ['fqa', 'asa'],
-        'decision': ['opt', 'asa'],
-        'action': ['opt'],
-        'forecast': ['fqa'],
-        'optimization': ['opt'],
-        'attribution': ['caa'],
-        'risk': ['ira']
+        'question': ['fqa', 'asa', 'sda'],
+        'decision': ['opt', 'asa', 'marketing-plan'],
+        'action': ['opt', 'marketing-plan'],
+        'forecast': ['fqa', 'sales-pipeline'],
+        'optimization': ['opt', 'marketing-plan'],
+        'attribution': ['caa', 'campaign-sku-mapper'],
+        'risk': ['ira'],
+        'marketing': ['marketing-plan', 'elasticity-uplift', 'campaign-sku-mapper'],
+        'sales': ['sales-pipeline'],
+        'inventory': ['ira', 'inventory-position']
       };
 
       let intentScore = 0;
       for (const [intentKey, agentIds] of Object.entries(intentMapping)) {
-        if (intentType.includes(intentKey) || intentCategory.includes(intentKey)) {
-          if (agentIds.includes(agent.id)) {
-            intentScore = 0.2;
-            reasons.push(`intent_match:${intentKey}`);
-            break;
-          }
+        // More strict: only check intent type/category, not query text
+        if ((intentType.includes(intentKey) || intentCategory.includes(intentKey)) && agentIds.includes(agent.id)) {
+          intentScore = 0.22; // Reduced from 0.25
+          reasons.push(`intent_match:${intentKey}`);
+          break;
         }
       }
       confidence += intentScore;
 
-      // Factor 4: Entity relevance (0-0.1 weight)
+      // Factor 4: Entity relevance (0-0.12 weight) - Balanced
       let entityScore = 0;
       if (entityValues.length > 0 || entityKeys.length > 0) {
         // Check if agent handles specific entity types
         const entityKeywords = [...entityValues, ...entityKeys].join(' ');
-        if (agentText.includes(entityKeywords) || 
-            entityKeys.some(ek => agentText.includes(ek))) {
-          entityScore = 0.1;
+        const entityText = entityKeywords.toLowerCase();
+        
+        // More strict entity matching - require exact or close match
+        if (agentText.includes(entityText) || 
+            entityKeys.some(ek => agentText.includes(ek.toLowerCase())) ||
+            entityValues.some(ev => agentText.includes(String(ev).toLowerCase()))) {
+          entityScore = 0.12; // Reduced from 0.15
           reasons.push('entity_match');
         }
+        // Removed the partial match bonus
       }
       confidence += entityScore;
 
-      // Factor 5: Category alignment bonus (0-0.05 weight)
+      // Factor 5: Category alignment bonus (0-0.08 weight) - Balanced
       const categoryMapping = {
-        'marketing': ['marketing-plan', 'elasticity-uplift', 'campaign-sku-mapper'],
-        'supply_chain': ['inventory_pos', 'capacity', 'supply_plan', 'production', 'procurement'],
+        'marketing': ['marketing-plan', 'elasticity-uplift', 'campaign-sku-mapper', 'caa'],
+        'supply_chain': ['inventory-position', 'capacity-leadtime', 'supply-planning', 'production-scheduling', 'procurement', 'logistics-allocation'],
         'sales': ['sales-pipeline'],
-        'analytics': ['sda', 'fqa', 'caa', 'ssa', 'ira', 'opt', 'asa']
+        'analytics': ['sda', 'fqa', 'caa', 'ssa', 'ira', 'opt', 'asa'],
+        'demand-gen': ['marketing-plan', 'sales-pipeline', 'elasticity-uplift', 'campaign-sku-mapper']
       };
 
       let categoryScore = 0;
       for (const [cat, agentIds] of Object.entries(categoryMapping)) {
+        // More strict: only check intent category, not query text
         if (intentCategory.includes(cat) && agentIds.includes(agent.id)) {
-          categoryScore = 0.05;
+          categoryScore = 0.08; // Reduced from 0.1
           reasons.push(`category_match:${cat}`);
           break;
         }
       }
       confidence += categoryScore;
+
+      // Factor 6: General purpose agent bonus (more strict)
+      // Only give bonus if confidence is very low and agent is truly general-purpose
+      if (confidence < 0.25 && (agent.id === 'asa' || agent.id === 'sda')) {
+        confidence += 0.12; // Reduced from 0.20
+        reasons.push('general_purpose_agent');
+      }
+
+      // Factor 7: Query length bonus (more strict)
+      // Require more keywords and matches
+      if (queryWords.length >= 6 && matchedKeywords >= 3) {
+        confidence += 0.05; // Reduced from 0.08
+        reasons.push('detailed_query');
+      }
+
+      // Removed Factor 8 (category keyword match) - too lenient
 
       // Normalize to 0.0-1.0 range
       confidence = Math.min(1.0, Math.max(0.0, confidence));

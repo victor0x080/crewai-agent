@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+WHITE='\033[1;37m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m' # No Color
+
 # Usage:
 #   scripts/test_query.sh "<message>" [maxWaitTimeMs] [baseUrl]
 # Example:
@@ -34,158 +46,197 @@ HTTP_STATUS=$(curl -s -o "$RESP_FILE" -w "%{http_code}" \
   -H 'Content-Type: application/json' \
   -d "$JSON_PAYLOAD")
 
-echo "HTTP $HTTP_STATUS"
-echo "Saved response: $RESP_FILE"
+# Color HTTP status
+if [ "$HTTP_STATUS" -eq 200 ]; then
+  echo -e "${GREEN}✓ HTTP ${HTTP_STATUS}${NC}"
+else
+  echo -e "${RED}✗ HTTP ${HTTP_STATUS}${NC}"
+fi
+echo -e "${DIM}Saved response: ${RESP_FILE}${NC}"
 
 if [ "$HAS_JQ" -eq 1 ]; then
-  echo "\n📊 Confidence Scores:"
-  jq -r '
+  echo -e "\n${BOLD}${CYAN}📊 Confidence Scores:${NC}"
+  jq -r --arg green "$GREEN" --arg yellow "$YELLOW" --arg red "$RED" --arg cyan "$CYAN" --arg magenta "$MAGENTA" --arg white "$WHITE" --arg dim "$DIM" --arg nc "$NC" --arg bold "$BOLD" '
     (.agentResults.discovery // {})
     | if .confidenceScores and (.confidenceScores | length > 0) then
-        "Selected Agents Confidence:",
-        (.confidenceScores[] | "  - \(.agentName // .agentId): \(.confidence // "N/A" | tostring | .[0:5])"),
+        (($bold + "Selected Agents Confidence:" + $nc)),
+        (.confidenceScores[] | 
+          (if (.confidence // 0) >= 0.72 then $green elif (.confidence // 0) >= 0.5 then $yellow else $red end) +
+          "  - \(.agentName // .agentId): \(.confidence // "N/A" | tostring | .[0:5])" + $nc),
         ""
       elif .topConfidenceScores and (.topConfidenceScores | length > 0) then
-        "Top 5 Agent Confidence Scores:",
-        (.topConfidenceScores[] | "  - \(.agentName // .agentId): \(.confidence | tostring | .[0:5])"),
+        (($bold + "Top 5 Agent Confidence Scores:" + $nc)),
+        (.topConfidenceScores[] | 
+          (if (.confidence // 0) >= 0.72 then $green elif (.confidence // 0) >= 0.5 then $yellow else $red end) +
+          "  - \(.agentName // .agentId): \(.confidence | tostring | .[0:5])" + $nc),
         ""
       else
-        "  (No confidence scores available)"
+        ("  " + $cyan + "(No confidence scores available)" + $nc)
       end,
-    if .threshold then "Threshold: \(.threshold)", "" else "" end,
-    if .maxConfidence then "Max Confidence: \(.maxConfidence | tostring | .[0:5])", "" else "" end,
+    if .threshold then (($cyan + "Threshold: " + $nc) + (.threshold | tostring)), "" else "" end,
+    if .maxConfidence then 
+      (($cyan + "Max Confidence: " + $nc) + 
+       (if .maxConfidence >= 0.72 then $green elif .maxConfidence >= 0.5 then $yellow else $red end) +
+       (.maxConfidence | tostring | .[0:5]) + $nc), 
+      "" 
+    else "" end,
     if .dynamicAgentCreated then
-      "\n🔧 Dynamic Agent Created:",
-      "  Agent ID: \(.agentId // "N/A")",
-      "  Agent Name: \(.agentSpec.agentName // "N/A")",
-      "  Role: \(.agentSpec.role // "N/A")",
-      "  Goal: \(.agentSpec.goal // "N/A")",
-      "  Capabilities: \(.agentSpec.capabilities // [] | join(", "))",
+      ("\n" + ($bold + $magenta + "🔧 Dynamic Agent Created:" + $nc)),
+      ("  " + $cyan + "Agent ID: " + $nc + (.agentId // "N/A")),
+      ("  " + $cyan + "Agent Name: " + $nc + ($white + (.agentSpec.agentName // "N/A") + $nc)),
+      ("  " + $cyan + "Role: " + $nc + (.agentSpec.role // "N/A")),
+      ("  " + $cyan + "Goal: " + $nc + (.agentSpec.goal // "N/A")),
+      ("  " + $cyan + "Capabilities: " + $nc + ($yellow + (.agentSpec.capabilities // [] | join(", ")) + $nc)),
       "",
-      "  Algorithms (\(.agentSpec.algorithms | length)):",
-      (.agentSpec.algorithms // [] | .[] | "    - \(.name): \(.description // "")"),
+      ("  " + $bold + $cyan + "Algorithms (" + (.agentSpec.algorithms | length | tostring) + "):" + $nc),
+      (.agentSpec.algorithms // [] | .[] | ("    " + $green + "- " + $nc + (.name // "Unknown") + $cyan + ": " + $nc + (.description // ""))),
       "",
-      "  Expected Insights:",
-      (.agentSpec.expectedInsights // [] | .[] | "    - \(.)"),
+      ("  " + $bold + $cyan + "Expected Insights:" + $nc),
+      (.agentSpec.expectedInsights // [] | .[] | ("    " + $yellow + "- " + $nc + .)),
       ""
     else "" end
   ' "$RESP_FILE"
 
-  echo "\nAgents used:"
-  jq -r '
-    def ok(b): if b then "OK" else "ERR" end;
+  echo -e "\n${BOLD}${BLUE}Agents used:${NC}"
+  jq -r --arg green "$GREEN" --arg red "$RED" --arg nc "$NC" '
+    def ok(b): if b then ($green + "OK" + $nc) else ($red + "ERR" + $nc) end;
     (.agentResults.results // [])
-    | map("  - " + ((.agentName//.agentId)//"-") + " [" + ok(.success) + "] (taskId: " + ((.taskId//.result.task_id)//"-") + ")")
+    | map("  - " + ((.agentName//.agentId)//"-") + " [" + ok(.success) + "] " + $nc + "(taskId: " + ((.taskId//.result.task_id)//"-") + ")")
     | .[]
   ' "$RESP_FILE"
 
-  echo "\nAgent results (full outputs):"
-  jq -r '
-    def ok(b): if b then "OK" else "ERR" end;
+  echo -e "\n${BOLD}${BLUE}Agent results (full outputs):${NC}"
+  jq -r --arg green "$GREEN" --arg red "$RED" --arg cyan "$CYAN" --arg white "$WHITE" --arg dim "$DIM" --arg nc "$NC" '
+    def ok(b): if b then ($green + "OK" + $nc) else ($red + "ERR" + $nc) end;
     (.agentResults.results // [])
     | .[]
-    | "--------------------------------------------------------------------------------",
-      "Agent: " + ((.agentName//.agentId)//"-"),
-      "Status: " + ok(.success),
-      "TaskId: " + ((.taskId//.result.task_id)//"-"),
-      "Output:\n" +
-        (
-          (.result.output // .result.answer // .result.summary // (.result | tostring) // "-")
-        )
+    | ($dim + "────────────────────────────────────────────────────────────────────────────────" + $nc),
+      ($cyan + "Agent: " + $nc + ($white + ((.agentName//.agentId)//"-") + $nc)),
+      ($cyan + "Status: " + $nc + ok(.success)),
+      ($cyan + "TaskId: " + $nc + ((.taskId//.result.task_id)//"-")),
+      ($cyan + "Output:" + $nc),
+      (
+        (.result.output // .result.answer // .result.summary // (.result | tostring) // "-")
+      )
   ' "$RESP_FILE"
 
-  echo "\nFinal response:"
+  echo -e "\n${BOLD}${GREEN}Final response:${NC}"
   jq -r '
     .agentResults.summary.synthesizedAnswer // .response // .conversationalResponse // "-"
   ' "$RESP_FILE"
 
-  echo "\nRequest info:"
+  echo -e "\n${BOLD}${DIM}Request info:${NC}"
   jq -r '
     {requestId, processedAt, timeout: (.agentResults.timeout // false), numResults: ((.agentResults.results // []) | length)}
   ' "$RESP_FILE"
 else
-  python3 - <<'PY'
+  python3 - <<PY
 import json
+import sys
+
+# Color codes
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+BLUE = '\033[0;34m'
+CYAN = '\033[0;36m'
+MAGENTA = '\033[0;35m'
+WHITE = '\033[1;37m'
+BOLD = '\033[1m'
+DIM = '\033[2m'
+NC = '\033[0m'
+
 p="/tmp/ims_agent_test_response.json"
 try:
   d=json.load(open(p))
 except Exception as e:
-  print("Failed to read response:", e)
+  print(f"{RED}Failed to read response: {e}{NC}", file=sys.stderr)
   raise SystemExit(0)
+
 results=(d.get("agentResults") or {}).get("results") or []
 discovery=(d.get("agentResults") or {}).get("discovery") or {}
-print("\n📊 Confidence Scores:")
+
+print(f"\n{BOLD}{CYAN}📊 Confidence Scores:{NC}")
 if discovery.get("confidenceScores"):
-  print("Selected Agents Confidence:")
+  print(f"{BOLD}Selected Agents Confidence:{NC}")
   for cs in discovery["confidenceScores"]:
     name=cs.get("agentName") or cs.get("agentId") or "-"
     conf=cs.get("confidence")
-    print(f"  - {name}: {conf:.3f}" if conf is not None else f"  - {name}: N/A")
+    color = GREEN if conf and conf >= 0.72 else YELLOW if conf and conf >= 0.5 else RED
+    print(f"  {color}- {name}: {conf:.3f}{NC}" if conf is not None else f"  - {name}: N/A")
   print()
 elif discovery.get("topConfidenceScores"):
-  print("Top 5 Agent Confidence Scores:")
+  print(f"{BOLD}Top 5 Agent Confidence Scores:{NC}")
   for cs in discovery["topConfidenceScores"]:
     name=cs.get("agentName") or cs.get("agentId") or "-"
     conf=cs.get("confidence")
-    print(f"  - {name}: {conf:.3f}" if conf is not None else f"  - {name}: N/A")
+    color = GREEN if conf and conf >= 0.72 else YELLOW if conf and conf >= 0.5 else RED
+    print(f"  {color}- {name}: {conf:.3f}{NC}" if conf is not None else f"  - {name}: N/A")
   print()
 else:
-  print("  (No confidence scores available)")
+  print(f"  {CYAN}(No confidence scores available){NC}")
   print()
+
 if discovery.get("threshold"):
-  print(f"Threshold: {discovery['threshold']}")
+  print(f"{CYAN}Threshold: {discovery['threshold']}{NC}")
   print()
+
 if discovery.get("maxConfidence") is not None:
-  print(f"Max Confidence: {discovery['maxConfidence']:.3f}")
+  max_conf = discovery['maxConfidence']
+  color = GREEN if max_conf >= 0.72 else YELLOW if max_conf >= 0.5 else RED
+  print(f"{CYAN}Max Confidence: {color}{max_conf:.3f}{NC}")
   print()
 
 # Display dynamic agent information if created
 if discovery.get("dynamicAgentCreated"):
-  print("\n🔧 Dynamic Agent Created:")
-  print(f"  Agent ID: {discovery.get('agentId', 'N/A')}")
+  print(f"\n{BOLD}{MAGENTA}🔧 Dynamic Agent Created:{NC}")
+  print(f"  {CYAN}Agent ID: {NC}{discovery.get('agentId', 'N/A')}")
   agent_spec = discovery.get("agentSpec", {})
-  print(f"  Agent Name: {agent_spec.get('agentName', 'N/A')}")
-  print(f"  Role: {agent_spec.get('role', 'N/A')}")
-  print(f"  Goal: {agent_spec.get('goal', 'N/A')}")
+  print(f"  {CYAN}Agent Name: {NC}{WHITE}{agent_spec.get('agentName', 'N/A')}{NC}")
+  print(f"  {CYAN}Role: {NC}{agent_spec.get('role', 'N/A')}")
+  print(f"  {CYAN}Goal: {NC}{agent_spec.get('goal', 'N/A')}")
   capabilities = agent_spec.get('capabilities', [])
-  print(f"  Capabilities: {', '.join(capabilities) if capabilities else 'N/A'}")
+  print(f"  {CYAN}Capabilities: {NC}{YELLOW}{', '.join(capabilities) if capabilities else 'N/A'}{NC}")
   print()
   algorithms = agent_spec.get('algorithms', [])
-  print(f"  Algorithms ({len(algorithms)}):")
+  print(f"  {BOLD}{CYAN}Algorithms ({len(algorithms)}):{NC}")
   for algo in algorithms:
-    print(f"    - {algo.get('name', 'Unknown')}: {algo.get('description', '')[:80]}")
+    print(f"    {GREEN}- {NC}{algo.get('name', 'Unknown')}{CYAN}: {NC}{algo.get('description', '')[:80]}")
   print()
   insights = agent_spec.get('expectedInsights', [])
   if insights:
-    print("  Expected Insights:")
+    print(f"  {BOLD}{CYAN}Expected Insights:{NC}")
     for insight in insights:
-      print(f"    - {insight}")
+      print(f"    {YELLOW}- {NC}{insight}")
     print()
 
-print("\nAgents used:")
+print(f"\n{BOLD}{BLUE}Agents used:{NC}")
 for r in results:
   name=r.get("agentName") or r.get("agentId") or "-"
-  status="OK" if r.get("success") else "ERR"
+  status=GREEN + "OK" + NC if r.get("success") else RED + "ERR" + NC
   taskId=r.get("taskId") or ((r.get("result") or {}).get("task_id")) or "-"
   print(f"  - {name} [{status}] (taskId: {taskId})")
-print("\nAgent results (full outputs):")
+
+print(f"\n{BOLD}{BLUE}Agent results (full outputs):{NC}")
 for r in results:
   name=r.get("agentName") or r.get("agentId") or "-"
-  status="OK" if r.get("success") else "ERR"
+  status=GREEN + "OK" + NC if r.get("success") else RED + "ERR" + NC
   taskId=r.get("taskId") or ((r.get("result") or {}).get("task_id")) or "-"
   out=(r.get("result") or {})
   output = out.get("output") or out.get("answer") or out.get("summary") or json.dumps(out, ensure_ascii=False)
-  print("-"*80)
-  print(f"Agent: {name}")
-  print(f"Status: {status}")
-  print(f"TaskId: {taskId}")
-  print("Output:")
+  print(f"{DIM}{'-'*80}{NC}")
+  print(f"{CYAN}Agent: {NC}{WHITE}{name}{NC}")
+  print(f"{CYAN}Status: {NC}{status}")
+  print(f"{CYAN}TaskId: {NC}{taskId}")
+  print(f"{CYAN}Output:{NC}")
   print(output)
-print("\nFinal response:")
+
+print(f"\n{BOLD}{GREEN}Final response:{NC}")
 resp=(d.get("agentResults") or {}).get("summary",{}).get("synthesizedAnswer") \
      or d.get("response") or d.get("conversationalResponse") or "-"
 print(resp)
-print("\nRequest info:")
+
+print(f"\n{BOLD}{DIM}Request info:{NC}")
 info={
   "requestId": d.get("requestId"),
   "processedAt": d.get("processedAt"),

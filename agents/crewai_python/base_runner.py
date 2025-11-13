@@ -99,13 +99,14 @@ class AgentRunner:
                 except Exception:
                     pass
                 return
-            # Extract task description from CloudEvent structure
+            # Extract task description and context from CloudEvent structure
             # CloudEvent format: event['data']['task_description'] or event['data'] (legacy)
+            inputs = {}
             if isinstance(event.get('data'), dict):
                 task_description = event['data'].get('task_description', '')
+                inputs = event['data'].get('inputs', {})
                 if not task_description:
                     # Fallback: use the query if available
-                    inputs = event['data'].get('inputs', {})
                     if isinstance(inputs, dict):
                         task_description = inputs.get('query', str(event['data']))
                     else:
@@ -116,6 +117,37 @@ class AgentRunner:
             
             if not task_description:
                 task_description = "Process task"
+            
+            # Extract memory context from inputs if available
+            memory_context = {}
+            if isinstance(inputs, dict):
+                context = inputs.get('context', {})
+                if isinstance(context, dict):
+                    memory_context = {
+                        'workingMemory': context.get('workingMemory', []),
+                        'shortTermMemory': context.get('shortTermMemory', []),
+                        'longTermMemory': context.get('longTermMemory', []),
+                        'conversationHistory': context.get('conversationHistory', [])
+                    }
+            
+            # Build enhanced task description with memory context
+            if memory_context and (memory_context.get('workingMemory') or memory_context.get('conversationHistory')):
+                # Include relevant memory in task description so agent can use it
+                memory_summary = []
+                if memory_context.get('workingMemory'):
+                    recent_turns = memory_context['workingMemory'][-3:]  # Last 3 turns
+                    for turn in recent_turns:
+                        if turn.get('query'):
+                            memory_summary.append(f"Previous query: {turn['query'][:100]}")
+                if memory_context.get('conversationHistory'):
+                    recent_conv = memory_context['conversationHistory'][:2]  # Last 2 messages
+                    for conv in recent_conv:
+                        if conv.get('message'):
+                            memory_summary.append(f"Previous message: {conv['message'][:100]}")
+                
+                if memory_summary:
+                    task_description = f"{task_description}\n\nPrevious conversation context:\n" + "\n".join(memory_summary)
+                    self.logger.info(f"📚 Added memory context to task ({len(memory_summary)} items)")
             
             self.logger.info(f"📋 Task description: {task_description[:100]}...")
             # Estimate tokens (approx. 1 token ≈ 4 chars) + response buffer
