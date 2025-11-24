@@ -1,0 +1,495 @@
+{
+  "count": 54,
+  "agents": [
+    {
+      "id": "sda",
+      "name": "Semantic Data Agent",
+      "role": "Query structured and unstructured data sources using semantic search",
+      "capabilities": ["semantic_search", "data_retrieval", "vector_query"],
+      "status": "idle"
+    },
+    {
+      "id": "fqa",
+      "name": "Forecast Q&A Agent",
+      "role": "Answer forecasting questions and provide demand predictions",
+      "capabilities": ["forecasting", "demand_prediction", "qa"],
+      "status": "idle"
+    },
+    {
+      "id": "caa",
+      "name": "Causal & Attribution Agent",
+      "role": "Perform causal analysis and marketing attribution",
+      "capabilities": ["causal_analysis", "attribution", "impact_analysis"],
+      "status": "idle"
+    },
+    {
+      "id": "ssa",
+      "name": "Scenario Simulator Agent",
+      "role": "Run what-if scenarios and simulations",
+      "capabilities": [
+        "scenario_simulation",
+        "monte_carlo",
+        "sensitivity_analysis"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "ira",
+      "name": "Inventory Risk Agent",
+      "role": "Assess inventory risks, stockouts, and overstocks",
+      "capabilities": [
+        "risk_assessment",
+        "inventory_analysis",
+        "stockout_prediction"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "opt",
+      "name": "Optimizer Agent",
+      "role": "Solve optimization problems (pricing, inventory, budget allocation)",
+      "capabilities": [
+        "optimization",
+        "constraint_solving",
+        "linear_programming"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "asa",
+      "name": "Answer Synthesis Agent",
+      "role": "Synthesize insights from multiple agents into coherent answers",
+      "capabilities": [
+        "answer_synthesis",
+        "insight_aggregation",
+        "response_generation"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "marketing-plan",
+      "name": "Marketing Plan Agent",
+      "role": "Convert marketing campaign briefs to machine-readable intent",
+      "capabilities": [
+        "campaign_planning",
+        "budget_allocation",
+        "channel_selection"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "sales-pipeline",
+      "name": "Sales Pipeline Agent",
+      "role": "Forecast sales pipeline and expected bookings",
+      "capabilities": [
+        "pipeline_forecasting",
+        "conversion_prediction",
+        "revenue_forecast"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "elasticity-uplift",
+      "name": "Elasticity & Uplift Agent",
+      "role": "Calculate price elasticity and promotional uplift",
+      "capabilities": ["price_elasticity", "promo_uplift", "demand_modeling"],
+      "status": "idle"
+    },
+    {
+      "id": "campaign-sku-mapper",
+      "name": "Campaign→SKU Mapper Agent",
+      "role": "Map marketing campaigns to affected SKUs",
+      "capabilities": ["campaign_mapping", "sku_impact", "attribution"],
+      "status": "idle"
+    },
+    {
+      "id": "inventory-position",
+      "name": "Inventory Position Agent",
+      "role": "Track current inventory levels and positions",
+      "capabilities": [
+        "inventory_tracking",
+        "stock_monitoring",
+        "position_analysis"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "capacity-leadtime",
+      "name": "Capacity & Lead-Time Agent",
+      "role": "Assess production capacity and lead times",
+      "capabilities": [
+        "capacity_planning",
+        "leadtime_analysis",
+        "bottleneck_detection"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "supply-planning",
+      "name": "Supply Planning Agent",
+      "role": "Plan supply chain operations and procurement",
+      "capabilities": [
+        "supply_planning",
+        "procurement_optimization",
+        "vendor_selection"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "production-scheduling",
+      "name": "Production Scheduling Agent",
+      "role": "Optimize production schedules and resource allocation",
+      "capabilities": [
+        "production_scheduling",
+        "resource_allocation",
+        "constraint_optimization"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "procurement",
+      "name": "Procurement Agent",
+      "role": "Manage procurement decisions and supplier relationships",
+      "capabilities": [
+        "procurement_planning",
+        "supplier_evaluation",
+        "cost_optimization"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "logistics-allocation",
+      "name": "Logistics & Allocation Agent",
+      "role": "Optimize logistics and inventory allocation across locations",
+      "capabilities": ["logistics_optimization", "allocation", "routing"],
+      "status": "idle"
+    },
+    {
+      "id": "atp-ctp",
+      "name": "ATP/CTP Agent",
+      "role": "Calculate Available-to-Promise and Capable-to-Promise",
+      "capabilities": [
+        "atp_calculation",
+        "ctp_calculation",
+        "promise_validation"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "constraint-broadcast",
+      "name": "Constraint Broadcast Agent",
+      "role": "Broadcast supply constraints to demand-gen teams",
+      "capabilities": [
+        "constraint_management",
+        "guardrail_enforcement",
+        "policy_broadcast"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "price-promo-guardrail",
+      "name": "Price/Promo Guardrail Agent",
+      "role": "Enforce pricing and promotional guardrails (ATP, margin)",
+      "capabilities": ["price_validation", "promo_compliance", "margin_check"],
+      "status": "idle"
+    },
+    {
+      "id": "policy-elicitation",
+      "name": "Policy Elicitation & S&OP Negotiator Agent",
+      "role": "Conversationally build policies and negotiate S&OP plans",
+      "capabilities": ["policy_creation", "negotiation", "consensus_building"],
+      "status": "idle"
+    },
+    {
+      "id": "data-gap-mapping",
+      "name": "Data Gap & Mapping Agent",
+      "role": "Identify data gaps and create ID/enum crosswalks",
+      "capabilities": [
+        "data_mapping",
+        "gap_identification",
+        "schema_alignment"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "rca-change-detective",
+      "name": "RCA / Change Detective Agent",
+      "role": "Root cause analysis for KPI degradation",
+      "capabilities": [
+        "root_cause_analysis",
+        "anomaly_detection",
+        "change_detection"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "ingress-normalization",
+      "name": "Ingress & Normalization Agent",
+      "role": "Ingest and normalize data from multiple sources",
+      "capabilities": ["data_ingestion", "normalization", "schema_mapping"],
+      "status": "idle"
+    },
+    {
+      "id": "catalog-schema",
+      "name": "Catalog & Schema Agent",
+      "role": "Manage product catalog and data schemas",
+      "capabilities": ["catalog_management", "schema_validation", "taxonomy"],
+      "status": "idle"
+    },
+    {
+      "id": "feature-forecast",
+      "name": "Feature & Forecast Agent",
+      "role": "Feature engineering and demand forecasting",
+      "capabilities": ["feature_engineering", "forecasting", "ml_modeling"],
+      "status": "idle"
+    },
+    {
+      "id": "attribution-causal",
+      "name": "Attribution & Causal Agent",
+      "role": "Marketing attribution and causal impact analysis",
+      "capabilities": ["attribution", "causal_inference", "incrementality"],
+      "status": "idle"
+    },
+    {
+      "id": "opportunity-scanner",
+      "name": "Opportunity Scanner Agent",
+      "role": "Identify optimization opportunities and anomalies",
+      "capabilities": [
+        "opportunity_detection",
+        "anomaly_detection",
+        "optimization_recommendation"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "cost-finance-mapper",
+      "name": "Cost & Finance Mapper Agent",
+      "role": "Map costs to financial categories and budgets",
+      "capabilities": [
+        "cost_mapping",
+        "budget_tracking",
+        "financial_allocation"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "budget-optimizer",
+      "name": "Budget Optimizer Agent",
+      "role": "Optimize budget allocation across channels and campaigns",
+      "capabilities": ["budget_optimization", "allocation", "roi_maximization"],
+      "status": "idle"
+    },
+    {
+      "id": "bid-target-setter",
+      "name": "Bid & Target Setter Agent",
+      "role": "Set optimal bids and performance targets",
+      "capabilities": ["bid_optimization", "target_setting", "pacing"],
+      "status": "idle"
+    },
+    {
+      "id": "creative-ops",
+      "name": "Creative Ops Agent",
+      "role": "Manage creative assets and performance tracking",
+      "capabilities": [
+        "creative_management",
+        "asset_tracking",
+        "performance_analysis"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "platform-adapter",
+      "name": "Platform Adapter Agent",
+      "role": "Adapt workflows to different advertising platforms",
+      "capabilities": [
+        "platform_adaptation",
+        "api_integration",
+        "format_conversion"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "question-router-planner",
+      "name": "Question Router & Planner Agent",
+      "role": "Route questions and plan multi-step workflows",
+      "capabilities": [
+        "question_routing",
+        "workflow_planning",
+        "decomposition"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "forecast-fusion",
+      "name": "Forecast Fusion Agent",
+      "role": "Fuse forecasts from multiple sources into consensus",
+      "capabilities": ["forecast_fusion", "ensemble", "consensus_building"],
+      "status": "idle"
+    },
+    {
+      "id": "sop-orchestrator",
+      "name": "S&OP Orchestrator Agent",
+      "role": "Orchestrate Sales & Operations Planning processes",
+      "capabilities": [
+        "sop_orchestration",
+        "cross_functional_planning",
+        "consensus"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "risk-digital-twin",
+      "name": "Risk & Digital Twin Agent",
+      "role": "Maintain digital twin model and assess risks",
+      "capabilities": ["digital_twin", "risk_modeling", "scenario_testing"],
+      "status": "idle"
+    },
+    {
+      "id": "amazon-rmn",
+      "name": "Amazon RMN Specialist",
+      "role": "Optimize Amazon Advertising campaigns",
+      "capabilities": ["amazon_ads", "sponsored_products", "dsp_optimization"],
+      "status": "idle"
+    },
+    {
+      "id": "walmart-rmn",
+      "name": "Walmart Connect Specialist",
+      "role": "Optimize Walmart Connect advertising",
+      "capabilities": ["walmart_connect", "sponsored_search", "display_ads"],
+      "status": "idle"
+    },
+    {
+      "id": "target-rmn",
+      "name": "Target Roundel Specialist",
+      "role": "Optimize Target Roundel campaigns",
+      "capabilities": ["target_roundel", "retail_media", "audience_targeting"],
+      "status": "idle"
+    },
+    {
+      "id": "instacart-rmn",
+      "name": "Instacart Ads Specialist",
+      "role": "Optimize Instacart Ads campaigns",
+      "capabilities": ["instacart_ads", "sponsored_listings", "shoppable_ads"],
+      "status": "idle"
+    },
+    {
+      "id": "google-ads",
+      "name": "Google Ads Agent",
+      "role": "Optimize Google Ads campaigns",
+      "capabilities": ["google_ads", "search_ads", "display_network"],
+      "status": "idle"
+    },
+    {
+      "id": "meta-ads",
+      "name": "Meta Ads Agent",
+      "role": "Optimize Facebook and Instagram advertising",
+      "capabilities": ["meta_ads", "facebook_ads", "instagram_ads"],
+      "status": "idle"
+    },
+    {
+      "id": "tiktok-ads",
+      "name": "TikTok Ads Agent",
+      "role": "Optimize TikTok advertising campaigns",
+      "capabilities": [
+        "tiktok_ads",
+        "short_form_video",
+        "influencer_marketing"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "linkedin-ads",
+      "name": "LinkedIn Ads Agent",
+      "role": "Optimize LinkedIn B2B advertising",
+      "capabilities": ["linkedin_ads", "b2b_targeting", "lead_gen"],
+      "status": "idle"
+    },
+    {
+      "id": "pinterest-ads",
+      "name": "Pinterest Ads Agent",
+      "role": "Optimize Pinterest shopping and inspiration ads",
+      "capabilities": ["pinterest_ads", "shopping_ads", "visual_search"],
+      "status": "idle"
+    },
+    {
+      "id": "snapchat-ads",
+      "name": "Snapchat Ads Agent",
+      "role": "Optimize Snapchat AR and video campaigns",
+      "capabilities": ["snapchat_ads", "ar_ads", "gen_z_targeting"],
+      "status": "idle"
+    },
+    {
+      "id": "semantic-router",
+      "name": "Semantic Router Agent",
+      "role": "Route queries to appropriate agents using semantic understanding",
+      "capabilities": [
+        "semantic_routing",
+        "agent_selection",
+        "capability_matching"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "translator-contract",
+      "name": "Translator Contract Agent",
+      "role": "Translate between different data contracts and schemas",
+      "capabilities": [
+        "schema_translation",
+        "contract_mapping",
+        "format_conversion"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "validator-registry",
+      "name": "Validator Registry Agent",
+      "role": "Validate data against registered schemas and rules",
+      "capabilities": [
+        "schema_validation",
+        "rule_validation",
+        "compliance_check"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "guardrail-compliance",
+      "name": "Guardrail Compliance Agent",
+      "role": "Ensure all actions comply with business guardrails",
+      "capabilities": [
+        "compliance_check",
+        "guardrail_enforcement",
+        "policy_validation"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "safeguard-rollback",
+      "name": "Safeguard Rollback Agent",
+      "role": "Monitor execution and rollback on errors",
+      "capabilities": ["error_detection", "rollback", "recovery"],
+      "status": "idle"
+    },
+    {
+      "id": "goal-policy-elicitation",
+      "name": "Goal & Policy Elicitation Agent",
+      "role": "Elicit business goals and policies through conversation",
+      "capabilities": [
+        "goal_elicitation",
+        "policy_discovery",
+        "conversational_ui"
+      ],
+      "status": "idle"
+    },
+    {
+      "id": "qrp-planner",
+      "name": "QRP Planner Agent",
+      "role": "Query-Response-Plan coordination",
+      "capabilities": [
+        "query_planning",
+        "response_coordination",
+        "plan_execution"
+      ],
+      "status": "idle"
+    }
+  ]
+}

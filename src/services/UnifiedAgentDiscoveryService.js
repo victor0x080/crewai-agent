@@ -1,6 +1,6 @@
 /**
  * UnifiedAgentDiscoveryService
- * - Discovers suitable agents from registry (semantic)
+ * - Discovers suitable agents via: Ontology → Semantic (in order)
  * - Falls back to dynamic agent creation spec when confidence < threshold
  * - Uses OpenAI to generate agent specifications
  * - Integrates with Python CrewAI factory for agent creation
@@ -10,11 +10,13 @@ import OpenAI from 'openai';
 import config from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import { agentRegistry } from '../agents/registry.js';
+import { getOntologyService } from './ontology/OntologyService.js';
 
 export default class UnifiedAgentDiscoveryService {
   constructor(options = {}) {
     this.threshold = options.threshold ?? 0.72;
     this.openai = null;
+    this.ontologyService = null;
   }
 
   async initialize() {
@@ -28,10 +30,23 @@ export default class UnifiedAgentDiscoveryService {
     } else {
       logger.warn('⚠️ OpenAI not configured - dynamic agent generation will use fallback spec');
     }
+
+    // Initialize ontology service
+    try {
+      this.ontologyService = getOntologyService();
+      // Ensure ontology service is initialized (creates Supabase client)
+      if (this.ontologyService && !this.ontologyService.supabase) {
+        await this.ontologyService.initialize();
+      }
+      logger.info('✅ UnifiedAgentDiscoveryService initialized with OntologyService');
+    } catch (error) {
+      logger.warn('⚠️ OntologyService not available - ontology discovery will be skipped', { error: error.message });
+    }
   }
 
   /**
    * Discover agents and optionally create a dynamic agent spec
+   * Execution order: Ontology → Semantic
    * @param {string} query
    * @param {object} intent
    * @param {object} entities
@@ -39,19 +54,55 @@ export default class UnifiedAgentDiscoveryService {
    * @returns {Promise<{ discovered: Array, highConfidence: Array, dynamicAgentSpec?: object }>}
    */
   async discoverAndExecuteAgents(query, intent, entities, workflowTemplates = []) {
-    const discovered = await this.semanticAgentDiscovery(query, intent, entities);
+    const startTime = Date.now();
+    logger.info('🔍 Starting multi-stage agent discovery', {
+      query: query.substring(0, 100),
+      threshold: this.threshold
+    });
+
+    // STEP 1: Extract ontology concepts from query/intent
+    const ontologyConcepts = await this.extractOntologyConcepts(query, intent, entities);
+    logger.info('📊 Extracted ontology concepts', {
+      concepts: ontologyConcepts,
+      count: ontologyConcepts.length
+    });
+
+    // STEP 2: Discover agents in order: Ontology → Semantic
+    const [ontologyAgents, semanticAgents] = await Promise.all([
+      this.discoverViaOntology(ontologyConcepts, query, intent, entities),
+      this.semanticAgentDiscovery(query, intent, entities)
+    ]);
+
+    logger.info('📊 Discovery results by stage', {
+      ontology: ontologyAgents.length,
+      semantic: semanticAgents.length
+    });
+
+    // STEP 3: Combine and rank agents (ontology has highest priority)
+    const discovered = this.combineAndRankAgents(
+      ontologyAgents,
+      semanticAgents
+    );
+
     const highConfidence = discovered.filter(a => a.confidence >= this.threshold);
 
     // Log confidence scores for debugging
-    logger.info('📊 Agent discovery results', {
+    logger.info('📊 Combined agent discovery results', {
       query: query.substring(0, 100),
       threshold: this.threshold,
       discoveredCount: discovered.length,
       highConfidenceCount: highConfidence.length,
+      ontologyCount: ontologyAgents.length,
+      semanticCount: semanticAgents.length,
       topScores: discovered
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, 5)
-        .map(a => ({ name: a.name, confidence: a.confidence.toFixed(3) }))
+        .map(a => ({ 
+          name: a.name, 
+          confidence: a.confidence.toFixed(3),
+          source: a.source 
+        })),
+      duration: `${Date.now() - startTime}ms`
     });
 
     if (highConfidence.length > 0) {
@@ -64,6 +115,342 @@ export default class UnifiedAgentDiscoveryService {
     });
     const dynamicAgentSpec = await this.generateDynamicAgentConfig(query, intent, entities);
     return { discovered, highConfidence, dynamicAgentSpec };
+  }
+
+  /**
+   * Extract ontology concepts from query using LLM
+   * The LLM extracts terms that match actual ontology pref_labels or alt_labels
+   * @param {string} query
+   * @param {object} intent
+   * @param {object} entities
+   * @returns {Promise<string[]>} Array of concept URIs
+   */
+  async extractOntologyConcepts(query, intent, entities) {
+    if (!this.ontologyService) {
+      return [];
+    }
+
+    try {
+      const concepts = [];
+
+      // STEP 1: Use LLM to extract ontology concept terms from query
+      const extractedTerms = await this.extractConceptsWithLLM(query, intent, entities);
+      logger.info('🤖 LLM extracted ontology terms', {
+        terms: extractedTerms,
+        count: extractedTerms.length
+      });
+
+      // STEP 2: Resolve extracted terms to ontology concept URIs
+      // resolve() uses ILIKE '%term%' on pref_label OR exact match on alt_labels
+      const resolvePromises = extractedTerms.map(term => 
+        this.ontologyService.resolve(term)
+      );
+      const resolved = await Promise.all(resolvePromises);
+      const validConcepts = resolved.filter(c => c);
+      concepts.push(...validConcepts);
+
+      logger.info('✅ Resolved ontology concepts', {
+        extracted: extractedTerms.length,
+        resolved: validConcepts.length,
+        concepts: validConcepts
+      });
+
+      // STEP 3: Add intent-based concepts if not already included
+      // Note: intent.intent (e.g., "ANALYSIS", "GENERAL") and intent.category (e.g., "market_analysis")
+      // are NOT ontology concepts, so we skip resolving them to avoid unnecessary API calls.
+      // The LLM extraction above should already capture relevant ontology concepts from the query.
+      // If needed, we could map intent types to ontology concepts, but for now we skip this step.
+
+      // Expand concepts via SKOS relations
+      if (concepts.length > 0) {
+        const expanded = await this.ontologyService.expand(
+          concepts,
+          ['broader', 'narrower', 'related']
+        );
+        return [...new Set([...concepts, ...expanded])];
+      }
+
+      return [];
+    } catch (error) {
+      logger.warn('⚠️ Failed to extract ontology concepts', { error: error.message });
+      return [];
+    }
+  }
+
+  /**
+   * Use LLM to extract ontology concept terms from user query
+   * The LLM returns terms that should match ontology pref_labels or alt_labels
+   * @param {string} query
+   * @param {object} intent
+   * @param {object} entities
+   * @returns {Promise<string[]>} Array of concept terms (not URIs yet)
+   */
+  async extractConceptsWithLLM(query, intent, entities) {
+    if (!this.openai) {
+      logger.warn('⚠️ OpenAI not available - using fallback concept extraction');
+      return this.extractConceptsFallback(query, intent, entities);
+    }
+
+    try {
+      // Get sample ontology concepts to guide the LLM
+      const sampleConcepts = await this.getSampleOntologyConcepts();
+      
+      const systemPrompt = `You are an ontology concept extractor for retail media and marketing analytics.
+
+Your task is to extract ontology concept terms from the user's query that will match actual ontology concepts.
+
+ONTOLOGY CONCEPT EXAMPLES (these are the types of terms that exist):
+${sampleConcepts.map(c => `- ${c.pref_label}${c.alt_labels?.length > 0 ? ` (also known as: ${c.alt_labels.join(', ')})` : ''}`).join('\n')}
+
+IMPORTANT RULES:
+1. Extract terms that match the PREFERRED LABELS (pref_label) or ALTERNATIVE LABELS (alt_labels) in the ontology
+2. Use the exact terms from the examples above when possible
+3. For example, use "Campaign" not "campaigns", "Product" not "products", "KPI" not "metrics"
+4. Return terms that will successfully resolve via ontologyService.resolve()
+5. Include relevant concepts from: Campaign, Product, Audience, Measurement, Promotion, Retail Media, Pricing
+6. Return only terms that are likely to exist in the ontology (use examples as guide)
+7. Extract 3-8 relevant concepts from the query
+
+You MUST return a JSON object with a "concepts" key containing an array of strings.
+Example format: {"concepts": ["Campaign", "Optimization Goal", "Product", "Retail Media Platform"]}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: config.openai.model || 'gpt-4-turbo-preview',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { 
+            role: 'user', 
+            content: `Extract ontology concept terms from this query:\n\n"${query}"\n\nIntent: ${intent?.intent || 'unknown'}\nEntities: ${JSON.stringify(entities || {})}`
+          }
+        ],
+        temperature: 0.1, // Low temperature for consistent extraction
+        max_tokens: 500,
+        response_format: { type: 'json_object' }
+      });
+
+      const content = completion.choices[0]?.message?.content || '{}';
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (parseError) {
+        logger.warn('⚠️ Failed to parse LLM response as JSON, trying to extract from text', { 
+          content: content.substring(0, 200),
+          error: parseError.message 
+        });
+        // Try to extract JSON from markdown code blocks
+        const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || content.match(/(\{[\s\S]*\})/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[1]);
+        } else {
+          parsed = {};
+        }
+      }
+      
+      // Support both array format and object with "concepts" key
+      const extractedTerms = Array.isArray(parsed) 
+        ? parsed 
+        : (parsed.concepts || parsed.terms || parsed.ontology_concepts || []);
+      
+      logger.debug('LLM extraction result', { 
+        rawContent: content.substring(0, 200),
+        parsed,
+        extractedTerms 
+      });
+
+      // Normalize terms (trim, capitalize first letter for consistency)
+      return extractedTerms
+        .filter(term => term && typeof term === 'string')
+        .map(term => term.trim())
+        .filter(term => term.length > 0);
+
+    } catch (error) {
+      logger.warn('⚠️ LLM concept extraction failed, using fallback', { error: error.message });
+      return this.extractConceptsFallback(query, intent, entities);
+    }
+  }
+
+  /**
+   * Fallback concept extraction when LLM is unavailable
+   * Uses intent keywords and entities
+   */
+  async extractConceptsFallback(query, intent, entities) {
+    const terms = [];
+    
+    // Use intent keywords
+    if (intent?.keywords && Array.isArray(intent.keywords)) {
+      terms.push(...intent.keywords);
+    }
+
+    // Use entity values
+    if (entities) {
+      Object.values(entities).forEach(val => {
+        if (typeof val === 'string' && val.length > 0) {
+          terms.push(val);
+        }
+      });
+    }
+
+    // Use intent type
+    if (intent?.intent) {
+      terms.push(intent.intent);
+    }
+
+    return [...new Set(terms)]; // Remove duplicates
+  }
+
+  /**
+   * Get sample ontology concepts to guide LLM extraction
+   * @returns {Promise<Array>} Sample concepts with pref_label and alt_labels
+   */
+  async getSampleOntologyConcepts() {
+    // Hardcoded fallback examples
+    const fallbackConcepts = [
+      { pref_label: 'Campaign', alt_labels: ['Ad Campaign', 'Marketing Campaign'] },
+      { pref_label: 'Product', alt_labels: ['SKU', 'Item'] },
+      { pref_label: 'Customer Segment', alt_labels: [] },
+      { pref_label: 'KPI', alt_labels: ['Key Performance Indicator'] },
+      { pref_label: 'Retail Media Platform', alt_labels: ['RMN Platform'] },
+      { pref_label: 'Promotion', alt_labels: ['Promo'] },
+      { pref_label: 'Optimization Goal', alt_labels: ['Bid Strategy Goal'] },
+      { pref_label: 'Attribution Approach Family', alt_labels: ['Attribution Method'] },
+      { pref_label: 'Incrementality Type', alt_labels: ['Incremental vs Total'] },
+      { pref_label: 'Return Metric Type', alt_labels: ['Return Metric'] },
+      { pref_label: 'Sales Measure Type', alt_labels: ['Sales Type'] },
+      { pref_label: 'Product Category', alt_labels: ['Product Category'] },
+      { pref_label: 'Brand', alt_labels: [] },
+      { pref_label: 'Tactic Family', alt_labels: ['Tactic Type'] },
+      { pref_label: 'Funnel Stage', alt_labels: ['Journey Stage'] }
+    ];
+
+    if (!this.ontologyService || !this.ontologyService.supabase) {
+      return fallbackConcepts;
+    }
+
+    try {
+      // Query ontology for sample concepts across different schemes
+      const { data, error } = await this.ontologyService.supabase
+        .from('ontology_concepts')
+        .select('pref_label, alt_labels')
+        .limit(50)
+        .order('pref_label');
+
+      if (error) {
+        logger.warn('⚠️ Failed to fetch sample concepts, using fallback', { error: error.message });
+        return fallbackConcepts;
+      }
+
+      return (data && data.length > 0) ? data : fallbackConcepts;
+    } catch (error) {
+      logger.warn('⚠️ Error fetching sample concepts, using fallback', { error: error.message });
+      return fallbackConcepts;
+    }
+  }
+
+  /**
+   * Discover agents via ontology profiles (STEP 1 - Highest Priority)
+   * @param {string[]} ontologyConcepts - Concept URIs
+   * @param {string} query
+   * @param {object} intent
+   * @param {object} entities
+   * @returns {Promise<Array>} Discovered agents with ontology source
+   */
+  async discoverViaOntology(ontologyConcepts, query, intent, entities) {
+    if (!this.ontologyService || !ontologyConcepts || ontologyConcepts.length === 0) {
+      return [];
+    }
+
+    try {
+      logger.info('🔗 Step 1: Ontology discovery', { concepts: ontologyConcepts.length });
+
+      // Find agents interested in these concepts
+      const agentMatches = await this.ontologyService.findInterestedAgents(ontologyConcepts);
+
+      if (!agentMatches || agentMatches.length === 0) {
+        logger.info('🔗 No ontology matches found');
+        return [];
+      }
+
+      logger.info(`🔗 Ontology matched ${agentMatches.length} agents`);
+
+      // Map ontology matches to agent registry format
+      const discovered = [];
+      for (const match of agentMatches) {
+        const agentId = match.agent_id;
+        const agent = agentRegistry.find(a => a.id === agentId || a.id.toLowerCase() === agentId.toLowerCase());
+
+        if (agent) {
+          // High confidence for ontology matches (0.85-0.95)
+          const baseConfidence = 0.85;
+          const matchType = match.match_type || 'any';
+          const confidence = matchType === 'must' ? 0.95 : baseConfidence;
+
+          discovered.push({
+            id: agent.id,
+            name: agent.name,
+            confidence: Math.round(confidence * 100) / 100,
+            reasons: `ontology_match:${matchType}`,
+            matchedKeywords: match.matched_concepts?.length || 0,
+            category: agent.category,
+            source: 'ontology',
+            metadata: {
+              match_type: matchType,
+              matched_concepts: match.matched_concepts || []
+            }
+          });
+        }
+      }
+
+      return discovered;
+    } catch (error) {
+      logger.warn('⚠️ Ontology discovery failed', { error: error.message });
+      return [];
+    }
+  }
+
+  /**
+   * Combine agents from multiple sources and rank by confidence
+   * Ontology agents get highest priority, then semantic
+   * @param {Array} ontologyAgents
+   * @param {Array} semanticAgents
+   * @returns {Array} Combined and ranked agents
+   */
+  combineAndRankAgents(ontologyAgents, semanticAgents) {
+    const agentMap = new Map();
+
+    // Add ontology agents (highest priority, highest confidence)
+    for (const agent of ontologyAgents) {
+      agentMap.set(agent.id.toLowerCase(), agent);
+    }
+
+    // Add semantic agents (boost if already in map from ontology)
+    for (const agent of semanticAgents) {
+      const existing = agentMap.get(agent.id.toLowerCase());
+      if (existing) {
+        // Boost confidence for agents found by multiple methods
+        existing.confidence = Math.min(0.98, existing.confidence + 0.10);
+        existing.source = 'combined';
+        existing.metadata = {
+          ...existing.metadata,
+          semantic_confidence: agent.confidence
+        };
+      } else {
+        agentMap.set(agent.id.toLowerCase(), { ...agent, source: 'semantic' });
+      }
+    }
+
+    // Convert to array and sort by confidence
+    const combined = Array.from(agentMap.values());
+    combined.sort((a, b) => {
+      // Primary sort: confidence
+      if (Math.abs(a.confidence - b.confidence) > 0.01) {
+        return b.confidence - a.confidence;
+      }
+      // Secondary sort: source priority (ontology > combined > semantic)
+      const sourcePriority = { 'ontology': 2, 'combined': 1, 'semantic': 0 };
+      return (sourcePriority[b.source] || 0) - (sourcePriority[a.source] || 0);
+    });
+
+    return combined;
   }
 
   /**
@@ -303,7 +690,8 @@ export default class UnifiedAgentDiscoveryService {
         confidence: Math.round(confidence * 100) / 100, // Round to 2 decimals
         reasons: reasons.join(', '),
         matchedKeywords,
-        category: agent.category
+        category: agent.category,
+        source: 'semantic'
       };
     });
 

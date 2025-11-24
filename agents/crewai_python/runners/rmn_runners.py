@@ -8,12 +8,15 @@ from pathlib import Path
 # Add parent directory to path so we can import modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from base_runner import AgentRunner
+from crewai import Task, Crew, Process
 from agents.rmn_agents import (
     rmn_portfolio_optimizer,
     rmn_audience_sync,
     rmn_attribution,
     rmn_catalog_sync
 )
+# Walmart agents removed
+walmart_strategies_agent = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -254,7 +257,7 @@ if __name__ == '__main__':
     
     if len(sys.argv) < 2:
         print("Usage: python rmn_runners.py <agent_name>")
-        print("Available agents: portfolio, audience, attribution, catalog")
+        print("Available agents: portfolio, audience, attribution, catalog, walmart-rmn")
         sys.exit(1)
     
     agent_name = sys.argv[1]
@@ -266,10 +269,12 @@ if __name__ == '__main__':
         'attribution': (rmn_attribution, 'stream:agent:attribution:in', 'stream:agent:attribution:out', 'attribution'),
         'catalog': (rmn_catalog_sync, 'stream:agent:catalog:in', 'stream:agent:catalog:out', 'catalog')
     }
+    if walmart_strategies_agent is not None:
+        agent_map['walmart-rmn'] = (walmart_strategies_agent, 'stream:agent:walmart-rmn:in', 'stream:agent:walmart-rmn:out', 'walmart-rmn')
     
     if agent_name not in agent_map:
         print(f"Unknown agent: {agent_name}")
-        print("Available agents: portfolio, audience, attribution, catalog")
+        print("Available agents: " + ", ".join(agent_map.keys()))
         sys.exit(1)
     
     # Get agent and stream configuration

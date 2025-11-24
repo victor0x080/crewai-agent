@@ -1,8 +1,11 @@
 """
 Register All CrewAI Agents
 Registers platform, product, and brand agents with PythonAgentSyncBridge
+and creates ontology profiles for agent discovery
 """
 import sys
+import os
+import requests
 sys.path.append('..')
 from platform_agents import (
     google_ads_agent,
@@ -24,6 +27,10 @@ from brand_agents import (
     coca_cola_brand_agent,
     apple_brand_agent
 )
+
+# Supabase configuration
+SUPABASE_URL = os.getenv('SUPABASE_URL', 'http://localhost:54321')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY', 'your-supabase-key')
 
 
 # ============================================================================
@@ -104,6 +111,133 @@ def print_agent_summary():
     print("\n" + "=" * 80)
 
 
+def create_ontology_profiles():
+    """Create ontology profiles for all agents to enable ontology-based discovery."""
+    print("\n🔗 Creating ontology profiles for agent discovery...")
+    
+    # Map agent capabilities/interests to ontology concepts
+    # Based on agent roles, goals, and capabilities
+    profiles = [
+        # Platform Agents
+        {
+            "agent_id": "google_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:Google"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SearchAds", "ex:DisplayAds", "ex:VideoAds"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "meta_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:Meta"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SocialMedia", "ex:FacebookAds", "ex:InstagramAds"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "tiktok_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:TikTok"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SocialMedia", "ex:VideoAds", "ex:ShortFormVideo"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "linkedin_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:LinkedIn"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SocialMedia", "ex:B2BMarketing", "ex:ProfessionalNetwork"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "pinterest_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:Pinterest"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SocialMedia", "ex:VisualDiscovery", "ex:ShoppingIntent"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "snapchat_ads",
+            "interests_concepts_must": ["ex:Campaign", "ex:Channel", "ex:Snapchat"],
+            "interests_concepts_any": ["ex:Advertising", "ex:SocialMedia", "ex:ARAds", "ex:VerticalVideo"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        # Product Agents
+        {
+            "agent_id": "nike_air_max_270",
+            "interests_concepts_must": ["ex:Product", "ex:Pricing", "ex:Inventory"],
+            "interests_concepts_any": ["ex:ProductManagement", "ex:AthleticFootwear", "ex:Nike", "ex:SKU"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum", "get_category_constraints"]
+        },
+        {
+            "agent_id": "coca_cola_zero",
+            "interests_concepts_must": ["ex:Product", "ex:Pricing", "ex:Category/Beverages"],
+            "interests_concepts_any": ["ex:ProductManagement", "ex:SoftDrinks", "ex:Distribution", "ex:CocaCola"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum", "get_category_constraints"]
+        },
+        {
+            "agent_id": "airpods_pro",
+            "interests_concepts_must": ["ex:Product", "ex:Pricing", "ex:ConsumerElectronics"],
+            "interests_concepts_any": ["ex:ProductManagement", "ex:Audio", "ex:Premium", "ex:Apple"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum", "get_category_constraints"]
+        },
+        {
+            "agent_id": "tide_pods",
+            "interests_concepts_must": ["ex:Product", "ex:Pricing", "ex:HouseholdGoods"],
+            "interests_concepts_any": ["ex:ProductManagement", "ex:Laundry", "ex:ProcterGamble"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum", "get_category_constraints"]
+        },
+        {
+            "agent_id": "lululemon_align",
+            "interests_concepts_must": ["ex:Product", "ex:Pricing", "ex:Apparel"],
+            "interests_concepts_any": ["ex:ProductManagement", "ex:Activewear", "ex:Premium", "ex:Lululemon"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum", "get_category_constraints"]
+        },
+        # Brand Agents
+        {
+            "agent_id": "nike",
+            "interests_concepts_must": ["ex:Brand", "ex:PortfolioOptimization"],
+            "interests_concepts_any": ["ex:BrandStrategy", "ex:Athletic", "ex:Premium", "ex:Global"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "coca_cola",
+            "interests_concepts_must": ["ex:Brand", "ex:PortfolioOptimization", "ex:Category/Beverages"],
+            "interests_concepts_any": ["ex:BrandStrategy", "ex:MassMarket", "ex:Global"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        },
+        {
+            "agent_id": "apple",
+            "interests_concepts_must": ["ex:Brand", "ex:PortfolioOptimization", "ex:ConsumerElectronics"],
+            "interests_concepts_any": ["ex:BrandStrategy", "ex:Ecosystem", "ex:Premium", "ex:Global"],
+            "tools": ["resolve_concept", "expand_concepts", "map_enum"]
+        }
+    ]
+    
+    success_count = 0
+    error_count = 0
+    
+    for profile in profiles:
+        try:
+            response = requests.post(
+                f'{SUPABASE_URL}/rest/v1/agent_ontology_profiles',
+                headers={
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': f'Bearer {SUPABASE_KEY}',
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=merge-duplicates'
+                },
+                json=profile,
+                timeout=10
+            )
+            
+            if response.status_code in [200, 201]:
+                print(f"  ✅ Registered: {profile['agent_id']}")
+                success_count += 1
+            else:
+                print(f"  ❌ Failed: {profile['agent_id']} - {response.status_code}: {response.text}")
+                error_count += 1
+        except Exception as e:
+            print(f"  ❌ Error registering {profile['agent_id']}: {str(e)}")
+            error_count += 1
+    
+    print(f"\n📊 Summary: {success_count} succeeded, {error_count} failed")
+    return success_count, error_count
+
+
 def register_with_sync_bridge():
     """
     Register agents with PythonAgentSyncBridge
@@ -126,4 +260,11 @@ def register_with_sync_bridge():
 
 if __name__ == '__main__':
     print_agent_summary()
+    
+    # Register ontology profiles for agent discovery
+    print("\n" + "=" * 80)
+    print("ONTOLOGY PROFILE REGISTRATION")
+    print("=" * 80)
+    create_ontology_profiles()
+    
     register_with_sync_bridge()

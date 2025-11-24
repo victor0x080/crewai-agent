@@ -116,6 +116,10 @@ PLATFORM_AGENTS = [
     'snapchat_ads'         # Snapchat Ads Agent
 ]
 
+GROWTH_PLAN_AGENTS = [
+    # Removed: tenmilliondollargrowthplan
+]
+
 
 # ============================================================================
 # Agent Startup Functions
@@ -177,80 +181,20 @@ def start_crewai_agents():
         logger.error(f"❌ CrewAI Python directory not found: {crewai_dir}")
         return
     
-    # Optional: minimal agent set to avoid background loops
-    run_minimal = os.getenv('RUN_MINIMAL_AGENTS', 'false').lower() == 'true'
-    whitelist_env = os.getenv('AGENTS_WHITELIST', '')
-    whitelist = set([a.strip() for a in whitelist_env.split(',') if a.strip()])
-
-    def allowed(agent_name: str) -> bool:
-        if whitelist:
-            return agent_name in whitelist
-        if run_minimal:
-            return agent_name in {'sda', 'fqa', 'ssa', 'ira', 'asa'}
-        return True
-
-    # Start Skill Agents
-    logger.info("\n📋 Starting Skill Agents...")
-    for agent in SKILL_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('skill_runners.py', agent, crewai_dir)
+    # Only start conversational agent
+    logger.info("\n📋 Starting Conversational Agent...")
+    start_conversational_agent(crewai_dir)
     
-    # Start Extended Skill Agents
-    logger.info("\n📋 Starting Extended Skill Agents...")
-    for agent in EXTENDED_SKILL_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('extended_runners.py', agent, crewai_dir)
-    
-    # Start Demand-Gen Agents
-    logger.info("\n📋 Starting Demand-Gen Agents...")
-    for agent in DEMAND_GEN_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('extended_runners.py', agent, crewai_dir)
-    
-    # Start Supply Chain Agents
-    logger.info("\n📋 Starting Supply Chain Agents...")
-    for agent in SUPPLY_CHAIN_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('extended_runners.py', agent, crewai_dir)
-    
-    # Start Governance Agents
-    logger.info("\n📋 Starting Governance Agents...")
-    for agent in GOVERNANCE_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('governance_runners.py', agent, crewai_dir)
-    
-    # Start MCO Agents
-    logger.info("\n📋 Starting MCO Agents...")
-    for agent in MCO_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('mco_runners.py', agent, crewai_dir)
-    
-    # Start Interop Agents
-    logger.info("\n📋 Starting Interop Agents...")
-    for agent in INTEROP_AGENTS:
-        if allowed(agent):
-            start_crewai_agent('extended_runners.py', agent, crewai_dir)
-    
-    # Start RMN Agents (use correct runner names)
-    logger.info("\n📋 Starting RMN Agents...")
-    for agent in ['portfolio', 'audience', 'attribution', 'catalog']:
-        if allowed(agent):
-            start_crewai_agent('rmn_runners.py', agent, crewai_dir)
-    
-    # Start Platform Agents
-    logger.info("\n📋 Starting Platform Agents...")
-    # Platform agents (google_ads, meta_ads, etc.) are defined but don't have runners yet
-    # They're registered differently - skip for now to avoid crashes
-    logger.warning("   ⚠️  Platform agents skipped - not yet implemented with runners")
-    # TODO: Create platform_runners.py or integrate with adapter_runners.py
+    # All other agents are disabled - only conversational agent runs
+    logger.info("\n⚠️  All other agents disabled - only conversational agent is running")
 
 
-def start_crewai_agent(runner_script, agent_id, crewai_dir):
-    """Start a single CrewAI agent"""
-    runner_path = crewai_dir / 'runners' / runner_script
+def start_conversational_agent(crewai_dir):
+    """Start the conversational CrewAI agent"""
+    runner_path = crewai_dir / 'runners' / 'conversational_runner.py'
     
     if not runner_path.exists():
-        logger.warning(f"⚠️  Runner not found: {runner_script}")
+        logger.error(f"❌ Conversational runner not found: {runner_path}")
         return
     
     try:
@@ -258,23 +202,35 @@ def start_crewai_agent(runner_script, agent_id, crewai_dir):
         env = os.environ.copy()
         api_url = os.getenv('API_URL', 'http://localhost:3001')
         env['API_URL'] = api_url
-        # Use isolated CrewAI storage per agent to avoid SQLite I/O contention
-        # CrewAI resolves storage path using the value of CREWAI_STORAGE_DIR as the "app name"
-        # which maps to ~/.local/share/{app_name}/latest_kickoff_task_outputs.db
-        # Give each agent a unique name to avoid concurrent writes to the same DB file
-        env['CREWAI_STORAGE_DIR'] = f"crewai_storage_{agent_id}"
+        # Use isolated CrewAI storage for conversational agent
+        env['CREWAI_STORAGE_DIR'] = 'crewai_storage_conversational'
         
         proc = subprocess.Popen(
-            [PYTHON_CMD, str(runner_path), agent_id],
+            [PYTHON_CMD, str(runner_path)],
             cwd=str(crewai_dir),
             stdout=None,  # Inherit parent's stdout (goes to log file)
             stderr=None,  # Inherit parent's stderr (goes to log file)
             env=env
         )
-        processes.append(('crewai', agent_id, proc))
-        logger.info(f"   ✅ Started {agent_id} (PID: {proc.pid}) with API_URL={api_url}")
+        
+        # Check if process started successfully
+        time.sleep(0.5)
+        if proc.poll() is not None:
+            exit_code = proc.returncode
+            logger.error(f"❌ Conversational agent crashed immediately (exit code: {exit_code})")
+            return
+        
+        processes.append(('crewai', 'conversational', proc))
+        logger.info(f"   ✅ Started conversational agent (PID: {proc.pid}) with API_URL={api_url}")
+        logger.info(f"   📡 Listening on stream: stream:agent:conversational:in")
     except Exception as e:
-        logger.error(f"   ❌ Failed to start {agent_id}: {e}")
+        logger.error(f"   ❌ Failed to start conversational agent: {e}")
+
+
+def start_crewai_agent(runner_script, agent_id, crewai_dir):
+    """Start a single CrewAI agent (disabled - only conversational agent runs)"""
+    # This function is kept for compatibility but not used
+    pass
 
 
 # ============================================================================
@@ -370,21 +326,15 @@ def main():
     signal.signal(signal.SIGINT, stop_all_agents)
     signal.signal(signal.SIGTERM, stop_all_agents)
     
-    # Runtime flags
-    run_generic = os.getenv('RUN_GENERIC_AGENTS', 'false').lower() == 'true'
-    run_minimal = os.getenv('RUN_MINIMAL_AGENTS', 'false').lower() == 'true'
-
-    # Start generic agents (disabled by default to keep system idle)
-    if run_generic:
-        start_generic_agents()
-    else:
-        logger.info("Skipping generic agents (RUN_GENERIC_AGENTS=false)")
-
-    # Start CrewAI agents (respects RUN_MINIMAL_AGENTS/AGENTS_WHITELIST)
-    time.sleep(2)  # Give generic agents time to initialize
+    # Only start conversational agent - all other agents disabled
+    logger.info("Starting only conversational agent (all other agents disabled)")
     
+    # Skip generic agents
+    logger.info("Skipping generic agents")
+    
+    # Start only conversational agent
     start_crewai_agents()
-    time.sleep(2)  # Give CrewAI agents time to initialize
+    time.sleep(2)  # Give conversational agent time to initialize
     
     # Print summary
     print_summary()

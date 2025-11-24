@@ -31,6 +31,17 @@ from tools.algorithm_comparison_tool import (
     compare_algorithm_results,
     synthesize_multi_algorithm_insights
 )
+from tools.datacube_tools import (
+    query_retail_datacube,
+    get_pos_metrics,
+    get_inventory_metrics,
+    get_marketing_metrics,
+    get_merchandising_metrics,
+    get_procurement_metrics,
+    get_cross_domain_insights,
+    detect_anomalies,
+    DATACUBE_TOOLS
+)
 
 
 class ToolRegistry:
@@ -90,10 +101,18 @@ class ToolRegistry:
         
         data_source_map = {
             'demand_forecast': [fetch_demand_forecast_signal],
-            'inventory': [fetch_inventory_position, compute_stockout_risk],
+            'inventory': [fetch_inventory_position, compute_stockout_risk, get_inventory_metrics],
             'pricing': [fetch_pricing_promo_data],
-            'campaign': [fetch_campaign_performance],
+            'campaign': [fetch_campaign_performance, get_marketing_metrics],
             'simulation': [run_simulation_scenario],
+            # Datacube data sources
+            'datacube': DATACUBE_TOOLS,
+            'retail_datacube': DATACUBE_TOOLS,
+            'pos': [get_pos_metrics],
+            'marketing': [get_marketing_metrics],
+            'merchandising': [get_merchandising_metrics],
+            'procurement': [get_procurement_metrics],
+            'cross_domain': [get_cross_domain_insights],
         }
         
         for source in data_sources:
@@ -131,31 +150,42 @@ class ToolRegistry:
                 fetch_demand_forecast_signal,
                 fetch_inventory_position,
                 fetch_pricing_promo_data,
-                fetch_campaign_performance
+                fetch_campaign_performance,
+                get_cross_domain_insights,
+                query_retail_datacube
             ],
             'forecasting': [
                 fetch_demand_forecast_signal,
-                run_simulation_scenario
+                run_simulation_scenario,
+                get_pos_metrics,
+                get_cross_domain_insights
             ],
             'causal_analysis': [
                 fetch_demand_forecast_signal,
                 fetch_campaign_performance,
-                run_simulation_scenario
+                run_simulation_scenario,
+                get_marketing_metrics,
+                get_pos_metrics
             ],
             'scenario_simulation': [
                 run_simulation_scenario,
                 fetch_demand_forecast_signal,
-                fetch_inventory_position
+                fetch_inventory_position,
+                get_cross_domain_insights
             ],
             'inventory': [
                 fetch_inventory_position,
                 compute_stockout_risk,
-                fetch_demand_forecast_signal
+                fetch_demand_forecast_signal,
+                get_inventory_metrics,
+                get_procurement_metrics
             ],
             'risk': [
                 compute_stockout_risk,
                 fetch_inventory_position,
-                run_simulation_scenario
+                run_simulation_scenario,
+                detect_anomalies,
+                get_inventory_metrics
             ],
             
             # Optimization Capabilities
@@ -185,7 +215,9 @@ class ToolRegistry:
                 fetch_demand_forecast_signal,
                 fetch_inventory_position,
                 fetch_pricing_promo_data,
-                fetch_campaign_performance
+                fetch_campaign_performance,
+                detect_anomalies,
+                get_cross_domain_insights
             ],
             'opportunity_scanning': [
                 fetch_demand_forecast_signal,
@@ -232,7 +264,9 @@ class ToolRegistry:
             'retail_media': [
                 publish_platform_action,
                 fetch_campaign_performance,
-                validate_against_schema
+                validate_against_schema,
+                get_marketing_metrics,
+                get_cross_domain_insights
             ],
             'closed_loop_attribution': [
                 fetch_campaign_performance,
@@ -249,12 +283,16 @@ class ToolRegistry:
                 publish_platform_action,
                 validate_against_schema,
                 compare_algorithm_results,
-                synthesize_multi_algorithm_insights
+                synthesize_multi_algorithm_insights,
+                get_marketing_metrics,
+                get_pos_metrics
             ],
             'attribution': [
                 fetch_campaign_performance,
                 fetch_demand_forecast_signal,
-                compare_algorithm_results
+                compare_algorithm_results,
+                get_marketing_metrics,
+                get_pos_metrics
             ],
             'elasticity': [
                 fetch_pricing_promo_data,
@@ -297,6 +335,16 @@ class ToolRegistry:
             # Algorithm Comparison Tools
             'compare_algorithm_results': compare_algorithm_results,
             'synthesize_multi_algorithm_insights': synthesize_multi_algorithm_insights,
+            
+            # Datacube Tools
+            'query_retail_datacube': query_retail_datacube,
+            'get_pos_metrics': get_pos_metrics,
+            'get_inventory_metrics': get_inventory_metrics,
+            'get_marketing_metrics': get_marketing_metrics,
+            'get_merchandising_metrics': get_merchandising_metrics,
+            'get_procurement_metrics': get_procurement_metrics,
+            'get_cross_domain_insights': get_cross_domain_insights,
+            'detect_anomalies': detect_anomalies,
         }
     
     def get_capability_vocabulary(self) -> List[str]:

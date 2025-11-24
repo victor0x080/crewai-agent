@@ -122,6 +122,7 @@ COMMENT ON TABLE conversations IS 'Conversation history for memory context';
 CREATE TABLE IF NOT EXISTS knowledge_base (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id TEXT NOT NULL,
+  conversation_id TEXT, -- Link to conversation
   memory_type TEXT NOT NULL CHECK (memory_type IN ('short_term', 'long_term')),
   content TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
@@ -131,6 +132,7 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
 
 -- Add indexes
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_user_id ON knowledge_base(user_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_base_conversation_id ON knowledge_base(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_base_memory_type ON knowledge_base(memory_type);
 
 -- Add comment

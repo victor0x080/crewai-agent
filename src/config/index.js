@@ -42,7 +42,7 @@ const config = {
   },
   
   // Agent Configuration
-  maxAgentTimeoutMs: parseInt(process.env.MAX_AGENT_TIMEOUT_MS || '60000', 10),
+  maxAgentTimeoutMs: parseInt(process.env.MAX_AGENT_TIMEOUT_MS || '300000', 10), // 300 seconds (5 minutes)
   enableBackgroundProcessing: process.env.ENABLE_BACKGROUND_PROCESSING !== 'false',
   
   // Task Backlog Configuration
@@ -51,6 +51,18 @@ const config = {
     maxConcurrent: parseInt(process.env.MAX_CONCURRENT_TASKS || '10', 10),
     taskTimeout: parseInt(process.env.TASK_TIMEOUT_MS || '300000', 10), // 5 minutes
     enableMetrics: process.env.ENABLE_BACKLOG_METRICS !== 'false'
+  },
+  
+  // Pinecone
+  pinecone: {
+    enabled: !!process.env.PINECONE_API_KEY,
+    apiKey: process.env.PINECONE_API_KEY,
+    indexName: process.env.PINECONE_INDEX_NAME || 'langchain-chatbot-memory',
+    namespace: process.env.PINECONE_NAMESPACE || 'default',
+    dimension: parseInt(process.env.PINECONE_DIMENSION || '1024', 10), // Default to 1024, can be 1536 for OpenAI
+    environment: process.env.PINECONE_ENVIRONMENT || null, // Extract from host URL if provided
+    host: process.env.PINECONE_HOST || null, // Optional host URL
+    embeddingModel: process.env.PINECONE_EMBEDDING_MODEL || 'text-embedding-3-large' // Embedding model to use
   },
   
   // Logging

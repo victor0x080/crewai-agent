@@ -1,0 +1,279 @@
+
+> retail-analytics-cube@1.0.0 dev
+> cubejs-server
+
+Warning. "@cubejs-backend/duckdb-driver" package must be installed in devDependencies
+Warning. "@cubejs-backend/server" package must be installed in devDependencies
+🔥 Cube Store (0.35.81) is assigned to 3030 port.
+[33mMultitenancy Without ScheduledRefreshContexts[0m: undefined 
+{} 
+[33mYou are using multitenancy without configuring scheduledRefreshContexts, which can lead to issues where the security context will be undefined while Cube.js will do background refreshing: https://cube.dev/docs/config#options-reference-scheduled-refresh-contexts[0m
+🔓 Authentication checks are disabled in developer mode. Please use NODE_ENV=production to enable it.
+🦅 Dev environment available at http://localhost:4000
+🔗 Cube SQL (pg) is listening on 0.0.0.0:15432
+🚀 Cube API server (0.35.81) is listening on 4000
+[31mRefresh Scheduler Error[0m: scheduler-18d55ef4-7e59-4580-9c9d-dd11f533679e 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mUser Error[0m: d7ecdf65-a6da-42b3-8b4e-281c430a0345-span-1 (1ms)
+--
+{
+  "measures": []
+}
+--
+{} 
+Query should contain either measures, dimensions or timeDimensions with granularities in order to be valid
+[31mRefresh Scheduler Error[0m: scheduler-d671a2fe-3ef5-4009-b798-63cdbd0521f7 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-8f80efe0-cc32-4085-90d9-f3a2d4f8e49e 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-03498c0c-476a-4fae-af46-583d45ba8b4e 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-5e988ae9-6bba-409c-bc53-788bbcf369a2 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-e11b05f3-1c6b-474c-935c-e9d84d1338ed 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-393d5b98-b9de-47a0-b400-de892d1ee7ae 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-e445b225-756f-4d58-b738-21dec7452a6d 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-3abf0364-f047-4a87-9995-044df73ea8cf 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-938d66ec-0eb6-467d-ab07-87326df13ae3 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-1c59367f-8f11-4b57-9791-7c3c372c429e 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-66e76272-f733-4e6b-adcd-448e01955bfc 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-cdbfb78c-b4c4-465f-82a3-b2b468d4ce31 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-fae2e3c7-82c5-47d5-b07d-ef7d544cc142 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mRefresh Scheduler Error[0m: scheduler-b0c0ed13-a6fe-42c6-8b72-ef70d1dab961 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at CompilerApi.scheduledPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:203:31)
+    at RefreshScheduler.roundRobinRefreshPreAggregationsQueryIterator (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:474:38)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:595:12
+    at async Promise.all (index 0)
+    at RefreshScheduler.refreshPreAggregations (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:590:5)
+    at async Promise.all (index 1)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mInternal Server Error[0m: 7fc65b3b-75c7-4e7a-8ce3-70048e1ca773-span-1 (8ms)
+--
+{
+  "measures": [
+    "RetailPosDaily.unitsSold",
+    "RetailPosDaily.netSales"
+  ],
+  "timeDimensions": [
+    {
+      "dimension": "RetailPosDaily.date",
+      "granularity": "day",
+      "dateRange": "last 7 days"
+    }
+  ]
+}
+--
+{} 
+TypeError: Cannot read properties of undefined (reading 'regionId')
+    at ApiGateway.queryRewrite (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/cube.js:23:25)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1236:43
+    at Array.map (<anonymous>)
+    at ApiGateway.getNormalizedQueries (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1223:15)
+    at ApiGateway.load (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1731:20)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:311:7
+[31mRefresh Scheduler Error[0m: scheduler-602ab95c-0068-4e8e-9431-02bddec8a169 
+{
+  "securityContext": {}
+} 
+Error: Model files not found. Please make sure the "model" directory exists and contains model files.
+    at FileRepository.getFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:31:13)
+    at FileRepository.dataSchemaFiles (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/shared/src/FileRepository.ts:46:19)
+    at CompilerApi.getCompilers (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/CompilerApi.js:55:21)
+    at RefreshScheduler.refreshCubesRefreshKey (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:337:23)
+    at async Promise.all (index 0)
+    at RefreshScheduler.runScheduledRefresh (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/server-core/src/core/RefreshScheduler.ts:285:9)
+[31mInternal Server Error[0m: 160bbafb-7c28-4a49-92a0-ab46bfbfff8b-span-1 (2ms)
+--
+{
+  "measures": [
+    "RetailPosDaily.netSales"
+  ],
+  "dimensions": [
+    "Store.regionName"
+  ],
+  "timeDimensions": [
+    {
+      "dimension": "RetailPosDaily.date",
+      "granularity": "week",
+      "dateRange": "last 4 weeks"
+    }
+  ]
+}
+--
+{} 
+TypeError: Cannot read properties of undefined (reading 'regionId')
+    at ApiGateway.queryRewrite (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/cube.js:23:25)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1236:43
+    at Array.map (<anonymous>)
+    at ApiGateway.getNormalizedQueries (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1223:15)
+    at ApiGateway.load (/mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:1731:20)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at /mnt/d/IMS/NEW_CREWAI_AGENT/retail-analytics/cube/node_modules/@cubejs-backend/api-gateway/src/gateway.ts:311:7
+Recevied SIGTERM signal, terminating with process exit

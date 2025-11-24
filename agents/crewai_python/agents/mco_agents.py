@@ -9,15 +9,55 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from tools.redis_streams_tools import publish_cloudevent, fetch_schema, fetch_cloudevent
 from tools.schema_validation_tools import publish_platform_action, validate_against_schema
+from tools.normalization_tools import (
+    detect_field_type,
+    infer_column_mapping,
+    normalize_metric,
+    normalize_datetime,
+    normalize_product_id,
+    classify_campaign_tactic,
+    extract_promo_attributes,
+    parse_audience_definition,
+    extract_kpi_formula,
+    validate_data_quality
+)
+from tools.ontology_tools import resolve_concept, expand_concepts, map_enum
 
 # Core Pipeline (11 agents)
 
 # 1. Ingress & Normalization Agent
 ingress = Agent(
     role='Data Ingress & Normalization Specialist',
-    goal='Pull marketing data from external APIs and normalize to CloudEvents',
-    backstory='Expert at API integration (Google/Meta/DV360/Amazon Ads), schema mapping, data quality',
-    tools=[publish_cloudevent, validate_against_schema],
+    goal='Pull marketing data from external APIs and normalize to CloudEvents using canonical schema',
+    backstory="""Expert at API integration (Google/Meta/DV360/Amazon Ads), schema mapping, and data quality.
+    
+    Your workflow: (1) Detect field types and map to canonical schema, (2) Normalize metrics/dates/product IDs,
+    (3) Extract business logic (campaign tactics, promotions, audience segments, KPIs), (4) Enrich with ontology
+    concepts, (5) Validate data quality (clicks <= impressions, etc.), (6) Validate against schema and publish.
+    
+    Use the canonical manufacturer RMN model as target schema. If confidence < 0.60 or quality_score < 0.70,
+    flag for review or send to DLQ. Always preserve source metadata for audit trail.""",
+    tools=[
+        # Core tools
+        publish_cloudevent,
+        validate_against_schema,
+        fetch_schema,
+        # Normalization tools
+        detect_field_type,
+        infer_column_mapping,
+        normalize_metric,
+        normalize_datetime,
+        normalize_product_id,
+        classify_campaign_tactic,
+        extract_promo_attributes,
+        parse_audience_definition,
+        extract_kpi_formula,
+        validate_data_quality,
+        # Ontology tools for semantic enrichment
+        resolve_concept,
+        expand_concepts,
+        map_enum
+    ],
     verbose=True,
     allow_delegation=False
 )

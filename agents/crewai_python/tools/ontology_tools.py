@@ -8,9 +8,10 @@ from crewai.tools import tool
 import requests
 from typing import List, Optional, Dict
 import urllib.parse
+import os
 
-# Base URL for ontology API
-ONTOLOGY_API_BASE = "http://localhost:5000/api/ontology"
+# Base URL for ontology API - can be configured via environment variable
+ONTOLOGY_API_BASE = os.getenv("ONTOLOGY_API_BASE", "http://localhost:5000/api/ontology")
 
 
 @tool("resolve_concept")
@@ -163,7 +164,7 @@ def get_category_constraints(category_uri: str) -> Dict:
         
         if response.status_code == 200:
             result = response.json()
-            return result.get('constraints', {})
+            return result
         else:
             # Fallback: empty constraints
             return {}
@@ -195,7 +196,7 @@ def get_same_as_mappings(entity_uri: str, system: str) -> Optional[str]:
         
         if response.status_code == 200:
             result = response.json()
-            return result.get('external_id')
+            return result.get('externalId')
         else:
             return None
     except Exception as e:

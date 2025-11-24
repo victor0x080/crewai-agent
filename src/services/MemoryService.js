@@ -63,28 +63,55 @@ export default class MemoryService {
     // Retrieve from Supabase if available
     if (this.supabase) {
       try {
-        // Get conversation history
+        // Get conversation history by user_id (since id is primary key, we get all user conversations)
+        // Filter to get recent conversations for context
         const { data: conversations } = await this.supabase
           .from('conversations')
           .select('*')
-          .eq('id', conversationId)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(20); // Get more to have better context
 
         if (conversations && conversations.length > 0) {
-          context.conversationHistory = conversations;
+          // Sort by created_at ascending for chronological order
+          context.conversationHistory = conversations.sort((a, b) => 
+            new Date(a.created_at) - new Date(b.created_at)
+          );
         }
 
         // Get relevant memories (if knowledge_base table exists)
-        const { data: memories } = await this.supabase
+        // Get short-term memories (most recent 10)
+        const { data: shortTermMemories, error: shortTermError } = await this.supabase
           .from('knowledge_base')
           .select('*')
           .eq('user_id', userId)
-          .limit(5);
+          .eq('memory_type', 'short_term')
+          .order('created_at', { ascending: false })
+          .limit(10);
 
-        if (memories && memories.length > 0) {
-          context.shortTermMemory = memories.filter(m => m.memory_type === 'short_term');
-          context.longTermMemory = memories.filter(m => m.memory_type === 'long_term');
+        if (shortTermError) {
+          logger.warn('Failed to retrieve short-term memories', { 
+            error: shortTermError.message 
+          });
+        } else if (shortTermMemories && shortTermMemories.length > 0) {
+          context.shortTermMemory = shortTermMemories;
+        }
+
+        // Get long-term memories (most recent 20)
+        const { data: longTermMemories, error: longTermError } = await this.supabase
+          .from('knowledge_base')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('memory_type', 'long_term')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (longTermError) {
+          logger.warn('Failed to retrieve long-term memories', { 
+            error: longTermError.message 
+          });
+        } else if (longTermMemories && longTermMemories.length > 0) {
+          context.longTermMemory = longTermMemories;
         }
 
       } catch (error) {
@@ -100,6 +127,13 @@ export default class MemoryService {
    */
   async storeExecution(data) {
     const { conversationId, userId, query, intent, agentResults } = data;
+
+    logger.info('💾 Storing execution in memory', {
+      conversationId,
+      userId,
+      hasAgentResults: !!agentResults,
+      hasSummary: !!agentResults?.summary
+    });
 
     // Store in working memory cache
     const existing = this.workingMemory.get(conversationId) || { items: [] };
@@ -118,23 +152,144 @@ export default class MemoryService {
     this.workingMemory.set(conversationId, existing);
 
     // Store in Supabase if available
-    if (this.supabase) {
-      try {
-        await this.supabase
-          .from('conversations')
-          .insert({
-            id: conversationId,
-            user_id: userId,
-            message: query,
-            intent: intent.intent,
-            response: JSON.stringify(agentResults?.summary || {}),
-            created_at: new Date().toISOString()
-          });
+    if (!this.supabase) {
+      logger.warn('⚠️ Supabase not available, skipping persistent memory storage');
+      return;
+    }
+    
+    if (!this.healthy) {
+      logger.warn('⚠️ MemoryService not healthy, skipping persistent memory storage');
+      return;
+    }
 
-        logger.info('✅ Execution stored in memory', { conversationId });
-      } catch (error) {
-        logger.warn('Failed to store execution in Supabase', { error: error.message });
+    // Store conversation history
+    // Generate unique ID for each conversation turn (conversationId + timestamp)
+    try {
+      const turnId = `${conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const { error: convError } = await this.supabase
+        .from('conversations')
+        .insert({
+          id: turnId,
+          user_id: userId,
+          message: query,
+          intent: intent?.intent || 'GENERAL',
+          response: agentResults?.summary ? JSON.stringify(agentResults.summary) : null,
+          created_at: new Date().toISOString()
+        });
+
+      if (convError) {
+        logger.warn('Failed to store conversation in Supabase', { 
+          error: convError.message,
+          code: convError.code,
+          details: convError.details
+        });
+      } else {
+        logger.info('✅ Conversation stored in Supabase', { conversationId });
       }
+    } catch (error) {
+      logger.warn('Failed to store execution in Supabase', { error: error.message });
+    }
+
+    // ALWAYS store short-term memory first, then promote if needed
+    try {
+      // Extract synthesized answer or agent outputs
+      const synthesized =
+        agentResults?.summary?.synthesizedAnswer ||
+        agentResults?.summary?.outputs?.map?.((o) => o?.output)?.filter(Boolean)?.join('\n\n') ||
+        agentResults?.results?.map?.((r) => r?.result?.output)?.filter(Boolean)?.join('\n\n') ||
+        query;
+
+      // ALWAYS store as short-term memory first (for every query)
+      const shortTermMetadata = {
+        conversationId,
+        query,
+        intent: intent?.intent || 'GENERAL',
+        agentsInvolved: agentResults?.summary?.agentsInvolved ?? agentResults?.agents?.length ?? 0,
+        successCount: agentResults?.summary?.successCount ?? 0,
+        failureCount: agentResults?.summary?.failureCount ?? 0,
+        timestamp: new Date().toISOString()
+      };
+
+      // Store short-term memory
+      const { error: shortTermError, data: shortTermData } = await this.supabase
+        .from('knowledge_base')
+        .insert({
+          user_id: userId,
+          conversation_id: conversationId,
+          memory_type: 'short_term',
+          content: synthesized || query,
+          metadata: shortTermMetadata
+        })
+        .select();
+
+      if (shortTermError) {
+        logger.error('❌ Failed to persist short-term memory to knowledge_base', { 
+          error: shortTermError.message,
+          code: shortTermError.code,
+          details: shortTermError.details,
+          hint: shortTermError.hint,
+          userId,
+          conversationId
+        });
+      } else {
+        logger.info('✅ Short-term memory persisted to knowledge_base', { 
+          id: shortTermData?.[0]?.id,
+          userId,
+          conversationId
+        });
+      }
+
+      // Determine if this should ALSO be promoted to long-term memory
+      // Criteria: High success rate, multiple agents involved, or important intent
+      const shouldPromoteToLongTerm = 
+        (agentResults?.summary?.successCount ?? 0) > 0 &&
+        ((agentResults?.summary?.agentsInvolved ?? (agentResults?.agents?.length ?? 0)) >= 2 || 
+         intent?.intent === 'DECISION' || 
+         intent?.intent === 'ANALYSIS');
+
+      if (!shouldPromoteToLongTerm) {
+        return; // Only short-term stored, we're done
+      }
+
+      // Also store as long-term memory if criteria met
+      const longTermMetadata = {
+        ...shortTermMetadata,
+        promotedAt: new Date().toISOString(),
+        reason: 'High success rate or important intent'
+      };
+
+      const { error: longTermError, data: longTermData } = await this.supabase
+        .from('knowledge_base')
+        .insert({
+          user_id: userId,
+          conversation_id: conversationId,
+          memory_type: 'long_term',
+          content: synthesized || query,
+          metadata: longTermMetadata
+        })
+        .select();
+
+      if (longTermError) {
+        logger.error('❌ Failed to persist long-term memory to knowledge_base', { 
+          error: longTermError.message,
+          code: longTermError.code,
+          details: longTermError.details,
+          hint: longTermError.hint,
+          userId,
+          conversationId
+        });
+      } else {
+        logger.info('🧠 Long-term memory persisted to knowledge_base', { 
+          id: longTermData?.[0]?.id,
+          userId,
+          conversationId
+        });
+      }
+    } catch (error) {
+      logger.error('Exception while persisting memory', { 
+        error: error.message,
+        stack: error.stack 
+      });
     }
   }
 
@@ -143,6 +298,51 @@ export default class MemoryService {
    */
   clearWorkingMemory(conversationId) {
     this.workingMemory.delete(conversationId);
+  }
+
+  /**
+   * Cleanup old short-term memories (keep only last 50 per user)
+   * This should be called periodically or on demand
+   */
+  async cleanupOldShortTermMemories(userId, keepCount = 50) {
+    if (!this.supabase) {
+      return;
+    }
+
+    try {
+      // Get all short-term memories for user, ordered by date
+      const { data: allMemories } = await this.supabase
+        .from('knowledge_base')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('memory_type', 'short_term')
+        .order('created_at', { ascending: false });
+
+      if (allMemories && allMemories.length > keepCount) {
+        // Get IDs to delete (everything after keepCount)
+        const idsToDelete = allMemories.slice(keepCount).map(m => m.id);
+
+        if (idsToDelete.length > 0) {
+          const { error } = await this.supabase
+            .from('knowledge_base')
+            .delete()
+            .in('id', idsToDelete);
+
+          if (error) {
+            logger.warn('Failed to cleanup old short-term memories', { 
+              error: error.message 
+            });
+          } else {
+            logger.info('🧹 Cleaned up old short-term memories', { 
+              deleted: idsToDelete.length,
+              userId 
+            });
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('Exception during memory cleanup', { error: error.message });
+    }
   }
 }
 

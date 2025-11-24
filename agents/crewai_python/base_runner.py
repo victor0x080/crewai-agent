@@ -189,6 +189,21 @@ class AgentRunner:
             result = None
             exception_holder = [None]
             
+            def _is_error_like(text: str) -> bool:
+                try:
+                    t = (text or "").strip()
+                    tl = t.lower()
+                    # Strong signals
+                    if tl.startswith('error') or 'insufficient_quota' in tl or 'llm failed' in t or '429' in t:
+                        return True
+                    # Avoid false-positives from normal prose
+                    # Only consider as error if 'error:' appears or 'failed:' appears
+                    if 'error:' in tl or 'failed:' in tl:
+                        return True
+                    return False
+                except Exception:
+                    return False
+            
             def execute_with_timeout():
                 try:
                     # Suppress CrewAI's verbose output
@@ -197,7 +212,7 @@ class AgentRunner:
                         # CrewAI might return a result even on errors - check for error indicators
                         result_str = str(result)
                         # Check if result indicates an error
-                        if 'error' in result_str.lower() or 'failed' in result_str.lower() or '429' in result_str or 'quota' in result_str.lower():
+                        if _is_error_like(result_str):
                             # This might be an error result, treat it as exception
                             exception_holder[0] = RuntimeError(f"CrewAI returned error result: {result_str[:200]}")
                         else:
@@ -310,15 +325,7 @@ class AgentRunner:
             
             # Check if result indicates an error (CrewAI might return error strings/objects)
             result_str = str(result)
-            is_error_result = (
-                'error' in result_str.lower() or 
-                'failed' in result_str.lower() or 
-                '429' in result_str or 
-                'quota exceeded' in result_str.lower() or
-                'insufficient_quota' in result_str.lower() or
-                'LLM Call Failed' in result_str or
-                'LLM Failed' in result_str
-            )
+            is_error_result = _is_error_like(result_str)
             
             if is_error_result:
                 self.logger.warning(f"⚠️ CrewAI returned error-like result: {result_str[:200]}")

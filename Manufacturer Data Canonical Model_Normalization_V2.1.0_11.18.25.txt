@@ -1,0 +1,1839 @@
+{
+  "model_name": "CanonicalManufacturerRMNModel",
+  "version": "2.1.0",
+  "ontology_version": "v2.1.0",
+  "description": "Enhanced canonical schema with Priority 1 & 2 additions: audience segments, search terms, promotions, incrementality testing, product relationships, campaign pacing, and billing reconciliation.",
+  "schema_metadata": {
+    "created_at": "2025-11-18T00:00:00Z",
+    "created_by": "system",
+    "last_modified_at": "2025-11-18T12:00:00Z",
+    "last_modified_by": "system",
+    "version_changes": [
+      "Added audience_segment entity for platform-specific targeting",
+      "Added search_term entity for keyword performance tracking",
+      "Added promotion entity for coordinated media + promotion campaigns",
+      "Added incrementality_test entity for test/control frameworks",
+      "Added product_relationship entity for substitution/halo effects",
+      "Added campaign_pacing entity for budget forecasting",
+      "Added platform_invoice entity for billing reconciliation",
+      "Enhanced competitor_benchmark with SOV metrics"
+    ],
+    "breaking_changes": [],
+    "deprecation_notices": []
+  },
+  "normalization_methods_enum": [
+    "RULE",
+    "SEMANTIC",
+    "LLM",
+    "LORA",
+    "HYBRID"
+  ],
+  "human_review_status_enum": [
+    "NOT_REQUIRED",
+    "PENDING",
+    "APPROVED",
+    "CORRECTED",
+    "REJECTED",
+    "ESCALATED"
+  ],
+  "attribution_model_enum": [
+    "LAST_CLICK",
+    "FIRST_CLICK",
+    "LINEAR",
+    "TIME_DECAY",
+    "DATA_DRIVEN",
+    "POSITION_BASED"
+  ],
+  "pii_classification_enum": [
+    "PUBLIC",
+    "INTERNAL",
+    "CONFIDENTIAL",
+    "RESTRICTED",
+    "PII",
+    "SENSITIVE_PII"
+  ],
+  "entities": {
+    "manufacturer": {
+      "description": "Manufacturer / CPG parent entity with enhanced tracking and versioning.",
+      "primary_key": "manufacturer_id",
+      "partition_key": "region",
+      "fields": {
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "Canonical unique identifier for the manufacturer."
+        },
+        "manufacturer_name": {
+          "type": "string",
+          "required": true,
+          "description": "Official manufacturer display name."
+        },
+        "manufacturer_code": {
+          "type": "string",
+          "required": false,
+          "description": "Internal short code or abbreviation for the manufacturer."
+        },
+        "region": {
+          "type": "string",
+          "required": false,
+          "description": "Primary geographic region (e.g., 'NA', 'EU', 'APAC')."
+        },
+        "fiscal_calendar_schema_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to fiscal_calendar_schema entity."
+        },
+        "parent_manufacturer_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to parent manufacturer for corporate hierarchies."
+        },
+        "status": {
+          "type": "string",
+          "required": true,
+          "enum": ["ACTIVE", "INACTIVE", "MERGED", "ACQUIRED"],
+          "default": "ACTIVE"
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "required": true,
+          "description": "SCD Type 2: Start of validity period."
+        },
+        "valid_to": {
+          "type": "string",
+          "format": "date-time",
+          "required": false,
+          "description": "SCD Type 2: End of validity period (null = current)."
+        },
+        "is_current": {
+          "type": "boolean",
+          "required": true,
+          "default": true
+        },
+        "version_number": {
+          "type": "integer",
+          "required": true,
+          "default": 1
+        },
+        "change_reason": {
+          "type": "string",
+          "required": false
+        },
+        "attributes_ext": {
+          "type": "object",
+          "required": false,
+          "description": "Extended attributes with documented schema per manufacturer."
+        },
+        "source_metadata": {
+          "type": "object",
+          "required": true,
+          "schema": {
+            "source_system_id": {"type": "string"},
+            "source_system_name": {"type": "string"},
+            "source_record_id": {"type": "string"},
+            "ingestion_timestamp": {"type": "string", "format": "date-time"},
+            "ingestion_batch_id": {"type": "string"},
+            "source_schema_version": {"type": "string"}
+          }
+        },
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "parent_manufacturer_id", "references": "manufacturer.manufacturer_id"}
+        ]
+      }
+    },
+
+    "product_hierarchy": {
+      "description": "Multi-level product hierarchy supporting complex CPG structures.",
+      "primary_key": "hierarchy_id",
+      "fields": {
+        "hierarchy_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for hierarchy node."
+        },
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to manufacturer."
+        },
+        "parent_hierarchy_id": {
+          "type": "string",
+          "required": false,
+          "description": "Parent node (null for root)."
+        },
+        "level_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["PORTFOLIO", "BUSINESS_UNIT", "BRAND_FAMILY", "BRAND", "SUBBRAND", "PRODUCT_LINE", "VARIANT"],
+          "description": "Hierarchy level type."
+        },
+        "level_name": {
+          "type": "string",
+          "required": true,
+          "description": "Name at this hierarchy level."
+        },
+        "level_order": {
+          "type": "integer",
+          "required": true,
+          "description": "Depth in hierarchy (0 = root)."
+        },
+        "hierarchy_path": {
+          "type": "string",
+          "required": true,
+          "description": "Full path from root (e.g., '/Kellogg/Cereal/Special K')."
+        },
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "parent_hierarchy_id", "references": "product_hierarchy.hierarchy_id"}
+        ]
+      }
+    },
+
+    "product": {
+      "description": "Canonical product and SKU with enhanced hierarchy and versioning.",
+      "primary_key": "sku_id_canonical",
+      "partition_key": "manufacturer_id",
+      "fields": {
+        "sku_id_canonical": {
+          "type": "string",
+          "required": true,
+          "description": "Canonical SKU identifier: {manufacturer_id}:{local_sku}:{version_hash}"
+        },
+        "canonical_id_source": {
+          "type": "string",
+          "required": true,
+          "enum": ["RULE_BASED", "LLM_GENERATED", "MANUAL_ASSIGNMENT", "MERGED"]
+        },
+        "merge_history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "schema": {
+              "merged_from_id": {"type": "string"},
+              "merged_at": {"type": "string", "format": "date-time"},
+              "merge_reason": {"type": "string"}
+            }
+          }
+        },
+        "manufacturer_id": {"type": "string", "required": true},
+        "manufacturer_sku_id": {"type": "string", "required": false},
+        "upc_gtin": {"type": "string", "required": false},
+        "product_description": {"type": "string", "required": true},
+        "brand_hierarchy_id": {"type": "string", "required": true},
+        "category_hierarchy_id": {"type": "string", "required": true},
+        "variant": {"type": "string", "required": false},
+        "pack_size": {"type": "string", "required": false},
+        "unit_size": {"type": "string", "required": false},
+        "unit_size_normalized": {"type": "number", "required": false},
+        "unit_of_measure": {
+          "type": "string",
+          "required": false,
+          "enum": ["OZ", "LB", "ML", "L", "G", "KG", "CT", "EA"]
+        },
+        "nutrition_profile": {"type": "object", "required": false},
+        "product_attributes_ext": {"type": "object", "required": false},
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "version_number": {"type": "integer", "required": true, "default": 1},
+        "change_reason": {"type": "string"},
+        "source_metadata": {"type": "object", "required": true},
+        "data_quality_score": {
+          "type": "object",
+          "schema": {
+            "completeness": {"type": "number", "min": 0, "max": 1},
+            "accuracy": {"type": "number", "min": 0, "max": 1},
+            "consistency": {"type": "number", "min": 0, "max": 1},
+            "validation_failures": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true},
+        "is_deleted": {"type": "boolean", "default": false}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "brand_hierarchy_id", "references": "product_hierarchy.hierarchy_id"},
+          {"field": "category_hierarchy_id", "references": "product_hierarchy.hierarchy_id"}
+        ]
+      }
+    },
+
+    "product_relationship": {
+      "description": "NEW: Models product substitution, complementarity, and halo effects for cross-product attribution.",
+      "primary_key": "relationship_id",
+      "fields": {
+        "relationship_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for the relationship."
+        },
+        "primary_sku_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to product: the SKU being advertised/promoted."
+        },
+        "related_sku_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to product: the SKU benefiting from halo effect."
+        },
+        "relationship_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["SUBSTITUTE", "COMPLEMENT", "SIZE_VARIANT", "FLAVOR_VARIANT", "BUNDLE"],
+          "description": "Type of product relationship."
+        },
+        "halo_sales_coefficient": {
+          "type": "number",
+          "required": false,
+          "description": "Multiplier: for every $1 in primary_sku sales, related_sku lifts by X."
+        },
+        "cross_elasticity": {
+          "type": "number",
+          "required": false,
+          "description": "Price elasticity between products (for substitutes)."
+        },
+        "relationship_strength": {
+          "type": "string",
+          "enum": ["STRONG", "MODERATE", "WEAK"],
+          "description": "Qualitative strength of relationship."
+        },
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["primary_sku_id", "relationship_type"], "type": "btree"},
+        {"fields": ["related_sku_id"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "primary_sku_id", "references": "product.sku_id_canonical"},
+          {"field": "related_sku_id", "references": "product.sku_id_canonical"}
+        ]
+      }
+    },
+
+    "promotion": {
+      "description": "NEW: Tracks manufacturer promotions (coupons, discounts) to attribute sales lift to media vs. promotion.",
+      "primary_key": "promotion_id",
+      "fields": {
+        "promotion_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for the promotion."
+        },
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to manufacturer."
+        },
+        "sku_id_canonical": {
+          "type": "string",
+          "required": false,
+          "description": "FK to product (null for brand-level promos)."
+        },
+        "channel_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to channel_rmn where promotion runs."
+        },
+        "geography_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to geography for geo-targeted promotions."
+        },
+        "promotion_name": {
+          "type": "string",
+          "required": true
+        },
+        "promotion_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["COUPON_DIGITAL", "COUPON_PAPER", "PRICE_DISCOUNT", "BOGO", "TPR", "INSTANT_REBATE", "LOYALTY_POINTS"],
+          "description": "Type of promotional mechanic."
+        },
+        "discount_amount": {
+          "type": "number",
+          "required": false,
+          "description": "Absolute discount value (e.g., $0.50 off)."
+        },
+        "discount_percentage": {
+          "type": "number",
+          "required": false,
+          "description": "Percentage discount (e.g., 20%)."
+        },
+        "minimum_purchase_quantity": {
+          "type": "integer",
+          "required": false,
+          "description": "Min quantity to qualify (e.g., Buy 2 get $1 off)."
+        },
+        "valid_from": {
+          "type": "string",
+          "format": "date-time",
+          "required": true,
+          "description": "Promotion start date/time."
+        },
+        "valid_to": {
+          "type": "string",
+          "format": "date-time",
+          "required": true,
+          "description": "Promotion end date/time."
+        },
+        "redemption_channel": {
+          "type": "string",
+          "required": true,
+          "enum": ["DIGITAL_ONLY", "INSTORE_ONLY", "OMNICHANNEL"]
+        },
+        "total_budget": {
+          "type": "number",
+          "required": false,
+          "description": "Total promotional budget allocated."
+        },
+        "redemption_limit_per_customer": {
+          "type": "integer",
+          "required": false
+        },
+        "promotion_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["SCHEDULED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"],
+          "default": "SCHEDULED"
+        },
+        "coordinated_campaign_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to campaign if promotion is media-coordinated."
+        },
+        "promotion_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["manufacturer_id", "valid_from"], "type": "btree"},
+        {"fields": ["sku_id_canonical", "promotion_status"], "type": "btree"},
+        {"fields": ["coordinated_campaign_id"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "sku_id_canonical", "references": "product.sku_id_canonical"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "geography_id", "references": "geography.geography_id"},
+          {"field": "coordinated_campaign_id", "references": "campaign.campaign_id"}
+        ]
+      }
+    },
+
+    "product_availability": {
+      "description": "Track product distribution and availability by channel/geography.",
+      "primary_key": "availability_id",
+      "fields": {
+        "availability_id": {"type": "string", "required": true},
+        "sku_id_canonical": {"type": "string", "required": true},
+        "channel_id": {"type": "string", "required": true},
+        "geography_id": {"type": "string", "required": true},
+        "is_available": {"type": "boolean", "required": true},
+        "stock_status": {
+          "type": "string",
+          "enum": ["IN_STOCK", "LOW_STOCK", "OUT_OF_STOCK", "DISCONTINUED"]
+        },
+        "distribution_start_date": {"type": "string", "format": "date"},
+        "distribution_end_date": {"type": "string", "format": "date"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "sku_id_canonical", "references": "product.sku_id_canonical"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "geography_id", "references": "geography.geography_id"}
+        ]
+      }
+    },
+
+    "customer": {
+      "description": "Canonical customer with privacy controls and enhanced segmentation.",
+      "primary_key": "canonical_customer_id",
+      "partition_key": "geography_id",
+      "fields": {
+        "canonical_customer_id": {"type": "string", "required": true},
+        "household_id": {"type": "string", "required": false},
+        "loyalty_id_hash": {"type": "string", "required": false},
+        "customer_segment": {"type": "string", "required": false},
+        "geography_id": {"type": "string", "required": false},
+        "pii_classification": {
+          "type": "string",
+          "required": true,
+          "enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "PII", "SENSITIVE_PII"],
+          "default": "PII"
+        },
+        "consent_status": {
+          "type": "object",
+          "schema": {
+            "marketing_consent": {"type": "boolean"},
+            "data_sharing_consent": {"type": "boolean"},
+            "consent_date": {"type": "string", "format": "date-time"},
+            "consent_version": {"type": "string"}
+          }
+        },
+        "data_retention_until": {"type": "string", "format": "date-time"},
+        "customer_attributes_ext": {"type": "object"},
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true},
+        "is_deleted": {"type": "boolean", "default": false}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "geography_id", "references": "geography.geography_id"}
+        ]
+      }
+    },
+
+    "geography": {
+      "description": "Hierarchical geography model.",
+      "primary_key": "geography_id",
+      "fields": {
+        "geography_id": {"type": "string", "required": true},
+        "parent_geography_id": {"type": "string", "required": false},
+        "geography_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["COUNTRY", "REGION", "STATE", "DMA", "METRO", "CITY", "POSTAL_CODE"]
+        },
+        "geography_name": {"type": "string", "required": true},
+        "country_code": {"type": "string", "required": false},
+        "region": {"type": "string", "required": false},
+        "state_province": {"type": "string", "required": false},
+        "dma": {"type": "string", "required": false},
+        "city": {"type": "string", "required": false},
+        "postal_code": {"type": "string", "required": false},
+        "geography_path": {"type": "string", "required": true},
+        "latitude": {"type": "number", "required": false},
+        "longitude": {"type": "number", "required": false},
+        "geography_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "parent_geography_id", "references": "geography.geography_id"}
+        ]
+      }
+    },
+
+    "store": {
+      "description": "Physical retail store/outlet entity.",
+      "primary_key": "store_id",
+      "fields": {
+        "store_id": {"type": "string", "required": true},
+        "channel_id": {"type": "string", "required": true},
+        "store_name": {"type": "string", "required": true},
+        "store_number": {"type": "string", "required": false},
+        "geography_id": {"type": "string", "required": true},
+        "address_line1": {"type": "string"},
+        "address_line2": {"type": "string"},
+        "city": {"type": "string"},
+        "state_province": {"type": "string"},
+        "postal_code": {"type": "string"},
+        "country_code": {"type": "string"},
+        "store_format": {
+          "type": "string",
+          "enum": ["SUPERMARKET", "CONVENIENCE", "CLUB", "ECOMMERCE", "SPECIALTY"]
+        },
+        "opening_date": {"type": "string", "format": "date"},
+        "closing_date": {"type": "string", "format": "date"},
+        "is_active": {"type": "boolean", "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "geography_id", "references": "geography.geography_id"}
+        ]
+      }
+    },
+
+    "channel_rmn": {
+      "description": "Enhanced channel/RMN with platform versioning.",
+      "primary_key": "channel_id",
+      "fields": {
+        "channel_id": {"type": "string", "required": true},
+        "channel_name": {"type": "string", "required": true},
+        "channel_type": {
+          "type": "string",
+          "required": false,
+          "enum": ["RMN", "DSP", "TRADE_DESK", "RETAILER_SPECIFIC", "MARKETPLACE"]
+        },
+        "external_platform": {"type": "string", "required": false},
+        "platform_version": {"type": "string", "required": false},
+        "api_version": {"type": "string", "required": false},
+        "data_contract_version": {"type": "string", "required": false},
+        "platform_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["ACTIVE", "BETA", "DEPRECATED", "SUNSET"],
+          "default": "ACTIVE"
+        },
+        "attribution_default_window_days": {"type": "integer", "required": false},
+        "attribution_default_model": {"type": "string", "required": false},
+        "channel_attributes_ext": {"type": "object"},
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      }
+    },
+
+    "manufacturer_rmn_contract": {
+      "description": "Contract and configuration between manufacturer and RMN.",
+      "primary_key": "contract_id",
+      "fields": {
+        "contract_id": {"type": "string", "required": true},
+        "manufacturer_id": {"type": "string", "required": true},
+        "channel_id": {"type": "string", "required": true},
+        "contract_start_date": {"type": "string", "format": "date", "required": true},
+        "contract_end_date": {"type": "string", "format": "date"},
+        "data_sharing_agreement_version": {"type": "string"},
+        "attribution_window_days": {"type": "integer"},
+        "attribution_model": {"type": "string"},
+        "minimum_spend_commitment": {"type": "number"},
+        "rate_card_version": {"type": "string"},
+        "contract_status": {
+          "type": "string",
+          "enum": ["ACTIVE", "PENDING", "EXPIRED", "TERMINATED"]
+        },
+        "contract_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"}
+        ]
+      }
+    },
+
+    "campaign": {
+      "description": "Enhanced campaign with hierarchy support.",
+      "primary_key": "campaign_id",
+      "partition_key": "manufacturer_id",
+      "fields": {
+        "campaign_id": {"type": "string", "required": true},
+        "manufacturer_id": {"type": "string", "required": true},
+        "channel_id": {"type": "string", "required": true},
+        "campaign_name": {"type": "string", "required": true},
+        "parent_campaign_id": {"type": "string", "required": false},
+        "objective": {
+          "type": "string",
+          "required": false,
+          "enum": ["AWARENESS", "CONSIDERATION", "CONVERSION", "BASKET_SIZE", "LOYALTY"]
+        },
+        "start_date": {"type": "string", "format": "date-time"},
+        "end_date": {"type": "string", "format": "date-time"},
+        "budget_total": {"type": "number"},
+        "budget_currency": {"type": "string", "default": "USD"},
+        "campaign_status": {
+          "type": "string",
+          "enum": ["DRAFT", "SCHEDULED", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"]
+        },
+        "campaign_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "parent_campaign_id", "references": "campaign.campaign_id"}
+        ]
+      }
+    },
+
+    "campaign_pacing": {
+      "description": "NEW: Tracks campaign budget pacing and forecasts for real-time optimization.",
+      "primary_key": "pacing_id",
+      "partition_key": "campaign_id",
+      "fields": {
+        "pacing_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for pacing record."
+        },
+        "campaign_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to campaign."
+        },
+        "snapshot_date": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "Date of pacing calculation."
+        },
+        "budget_allocated": {
+          "type": "number",
+          "required": true,
+          "description": "Total campaign budget."
+        },
+        "budget_spent_to_date": {
+          "type": "number",
+          "required": true,
+          "description": "Cumulative spend as of snapshot_date."
+        },
+        "days_elapsed": {
+          "type": "integer",
+          "required": true,
+          "description": "Days since campaign start."
+        },
+        "days_remaining": {
+          "type": "integer",
+          "required": true,
+          "description": "Days until campaign end."
+        },
+        "expected_spend_to_date": {
+          "type": "number",
+          "required": true,
+          "description": "Pro-rated expected spend based on even pacing."
+        },
+        "spend_variance": {
+          "type": "number",
+          "required": true,
+          "description": "Actual spend - expected spend."
+        },
+        "spend_variance_percentage": {
+          "type": "number",
+          "required": true,
+          "description": "Variance as % of expected spend."
+        },
+        "projected_end_spend": {
+          "type": "number",
+          "required": true,
+          "description": "Forecasted total spend at current run rate."
+        },
+        "projected_budget_exhaustion_date": {
+          "type": "string",
+          "format": "date",
+          "required": false,
+          "description": "Estimated date budget will be depleted."
+        },
+        "pacing_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["UNDER_PACING", "ON_TRACK", "OVER_PACING", "EXHAUSTED"],
+          "description": "Current pacing health status."
+        },
+        "recommended_daily_budget": {
+          "type": "number",
+          "required": false,
+          "description": "Recommended daily spend to hit target."
+        },
+        "pacing_alert_triggered": {
+          "type": "boolean",
+          "required": true,
+          "default": false,
+          "description": "Whether this record triggered an alert."
+        },
+        "pacing_metadata": {
+          "type": "object",
+          "schema": {
+            "forecasting_method": {"type": "string", "enum": ["LINEAR", "MOVING_AVERAGE", "ML_MODEL"]},
+            "confidence_interval_lower": {"type": "number"},
+            "confidence_interval_upper": {"type": "number"},
+            "seasonality_adjusted": {"type": "boolean"}
+          }
+        },
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["campaign_id", "snapshot_date"], "type": "btree"},
+        {"fields": ["pacing_status"], "type": "btree"},
+        {"fields": ["pacing_alert_triggered"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "campaign_id", "references": "campaign.campaign_id"}
+        ]
+      }
+    },
+
+    "ad_group": {
+      "description": "Ad group level within campaign hierarchy.",
+      "primary_key": "ad_group_id",
+      "fields": {
+        "ad_group_id": {"type": "string", "required": true},
+        "campaign_id": {"type": "string", "required": true},
+        "ad_group_name": {"type": "string", "required": true},
+        "placement_type": {
+          "type": "string",
+          "enum": ["ONSITE_SEARCH", "ONSITE_DISPLAY", "OFFSITE_DISPLAY", "VIDEO", "SOCIAL", "CPC", "CPM"]
+        },
+        "targeting_criteria": {"type": "object"},
+        "bid_strategy": {"type": "string"},
+        "daily_budget": {"type": "number"},
+        "ad_group_status": {
+          "type": "string",
+          "enum": ["ACTIVE", "PAUSED", "ARCHIVED"]
+        },
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "campaign_id", "references": "campaign.campaign_id"}
+        ]
+      }
+    },
+
+    "audience_segment": {
+      "description": "NEW: Platform-specific audience segments for targeting and performance analysis.",
+      "primary_key": "audience_segment_id",
+      "fields": {
+        "audience_segment_id": {
+          "type": "string",
+          "required": true,
+          "description": "Canonical audience segment identifier."
+        },
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to manufacturer (owner of segment)."
+        },
+        "channel_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to channel_rmn where segment exists."
+        },
+        "segment_name": {
+          "type": "string",
+          "required": true,
+          "description": "Display name of the audience segment."
+        },
+        "platform_segment_id": {
+          "type": "string",
+          "required": true,
+          "description": "Native segment ID from RMN platform."
+        },
+        "segment_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["FIRST_PARTY", "LOOKALIKE", "CONTEXTUAL", "BEHAVIORAL", "DEMOGRAPHIC", "PURCHASE_BASED", "CUSTOM"],
+          "description": "Classification of audience segment."
+        },
+        "segment_category": {
+          "type": "string",
+          "required": false,
+          "description": "Platform taxonomy category (e.g., 'Frequent Bakery Buyers')."
+        },
+        "parent_segment_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to parent segment for hierarchical audiences."
+        },
+        "size_estimate": {
+          "type": "integer",
+          "required": false,
+          "description": "Estimated reach of segment."
+        },
+        "size_last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "required": false
+        },
+        "cpm_modifier": {
+          "type": "number",
+          "required": false,
+          "description": "Cost multiplier relative to baseline CPM."
+        },
+        "match_rate": {
+          "type": "number",
+          "required": false,
+          "description": "For first-party segments: % of uploaded records matched."
+        },
+        "targeting_criteria": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "age_range": {"type": "string"},
+            "income_range": {"type": "string"},
+            "purchase_frequency": {"type": "string"},
+            "category_affinity": {"type": "array", "items": {"type": "string"}},
+            "geographic_targeting": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "segment_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["ACTIVE", "BUILDING", "EXPIRED", "ARCHIVED"],
+          "default": "ACTIVE"
+        },
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "segment_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["manufacturer_id", "channel_id"], "type": "btree"},
+        {"fields": ["platform_segment_id"], "type": "btree"},
+        {"fields": ["segment_type", "segment_status"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "parent_segment_id", "references": "audience_segment.audience_segment_id"}
+        ]
+      }
+    },
+
+    "search_term": {
+      "description": "NEW: Keyword/search term performance for onsite search campaigns.",
+      "primary_key": "search_term_id",
+      "fields": {
+        "search_term_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for search term."
+        },
+        "ad_group_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to ad_group."
+        },
+        "keyword_text": {
+          "type": "string",
+          "required": true,
+          "description": "The search keyword or query."
+        },
+        "keyword_text_normalized": {
+          "type": "string",
+          "required": true,
+          "description": "Lowercase, trimmed version for deduplication."
+        },
+        "match_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["EXACT", "PHRASE", "BROAD", "AUTO"],
+          "description": "Keyword match type."
+        },
+        "bid_amount": {
+          "type": "number",
+          "required": false,
+          "description": "Bid amount for this keyword."
+        },
+        "quality_score": {
+          "type": "number",
+          "required": false,
+          "description": "Platform-assigned quality score (1-10 scale typical)."
+        },
+        "search_volume_estimate": {
+          "type": "integer",
+          "required": false,
+          "description": "Estimated monthly search volume."
+        },
+        "keyword_category": {
+          "type": "string",
+          "required": false,
+          "description": "Classified category (BRAND, CATEGORY, COMPETITOR, LONG_TAIL)."
+        },
+        "is_negative_keyword": {
+          "type": "boolean",
+          "required": true,
+          "default": false,
+          "description": "Whether this is an excluded keyword."
+        },
+        "keyword_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["ACTIVE", "PAUSED", "ARCHIVED"],
+          "default": "ACTIVE"
+        },
+        "valid_from": {"type": "string", "format": "date-time", "required": true},
+        "valid_to": {"type": "string", "format": "date-time"},
+        "is_current": {"type": "boolean", "required": true, "default": true},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["ad_group_id", "keyword_status"], "type": "btree"},
+        {"fields": ["keyword_text_normalized", "match_type"], "type": "btree"},
+        {"fields": ["keyword_category"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "ad_group_id", "references": "ad_group.ad_group_id"}
+        ]
+      }
+    },
+
+    "creative": {
+      "description": "Creative assets used in campaigns.",
+      "primary_key": "creative_id",
+      "fields": {
+        "creative_id": {"type": "string", "required": true},
+        "ad_group_id": {"type": "string", "required": true},
+        "creative_name": {"type": "string", "required": true},
+        "creative_type": {
+          "type": "string",
+          "enum": ["IMAGE", "VIDEO", "HTML5", "TEXT", "CAROUSEL", "NATIVE"]
+        },
+        "creative_format": {"type": "string"},
+        "asset_url": {"type": "string"},
+        "headline": {"type": "string"},
+        "body_copy": {"type": "string"},
+        "call_to_action": {"type": "string"},
+        "creative_status": {
+          "type": "string",
+          "enum": ["ACTIVE", "PAUSED", "ARCHIVED"]
+        },
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "ad_group_id", "references": "ad_group.ad_group_id"}
+        ]
+      }
+    },
+
+    "time": {
+      "description": "Enhanced time dimension with fiscal calendar support.",
+      "primary_key": "time_id",
+      "partition_key": "year",
+      "fields": {
+        "time_id": {"type": "string", "required": true},
+        "date": {"type": "string", "format": "date", "required": false},
+        "day_of_week": {"type": "integer", "min": 1, "max": 7},
+        "day_of_month": {"type": "integer", "min": 1, "max": 31},
+        "day_of_year": {"type": "integer", "min": 1, "max": 366},
+        "week": {"type": "integer"},
+        "week_start_date": {"type": "string", "format": "date"},
+        "week_end_date": {"type": "string", "format": "date"},
+        "month": {"type": "integer", "min": 1, "max": 12},
+        "month_name": {"type": "string"},
+        "quarter": {"type": "integer", "min": 1, "max": 4},
+        "year": {"type": "integer"},
+        "fiscal_calendar_schema_id": {"type": "string"},
+        "fiscal_period": {"type": "string"},
+        "fiscal_quarter": {"type": "string"},
+        "fiscal_year": {"type": "integer"},
+        "is_holiday": {"type": "boolean", "default": false},
+        "holiday_name": {"type": "string"},
+        "time_attributes_ext": {"type": "object"},
+        "created_at": {"type": "string", "format": "date-time", "required": true}
+      }
+    },
+
+    "fiscal_calendar_schema": {
+      "description": "Manufacturer-specific fiscal calendar definitions.",
+      "primary_key": "fiscal_calendar_schema_id",
+      "fields": {
+        "fiscal_calendar_schema_id": {"type": "string", "required": true},
+        "schema_name": {"type": "string", "required": true},
+        "fiscal_year_start_month": {"type": "integer", "min": 1, "max": 12},
+        "fiscal_year_start_day": {"type": "integer", "min": 1, "max": 31},
+        "period_type": {
+          "type": "string",
+          "enum": ["4-4-5", "4-5-4", "5-4-4", "MONTHLY", "CUSTOM"]
+        },
+        "description": {"type": "string"},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      }
+    },
+
+    "incrementality_test": {
+      "description": "NEW: Test/control framework for measuring true incrementality of media campaigns.",
+      "primary_key": "test_id",
+      "fields": {
+        "test_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique identifier for incrementality test."
+        },
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to manufacturer."
+        },
+        "campaign_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to campaign being tested (null for portfolio tests)."
+        },
+        "channel_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to channel_rmn."
+        },
+        "test_name": {
+          "type": "string",
+          "required": true,
+          "description": "Name of the incrementality test."
+        },
+        "test_type": {
+          "type": "string",
+          "required": true,
+          "enum": ["GEO_HOLDOUT", "AUDIENCE_HOLDOUT", "TIME_SERIES", "SYNTHETIC_CONTROL", "PSA"],
+          "description": "Methodology used for test."
+        },
+        "test_hypothesis": {
+          "type": "string",
+          "required": false,
+          "description": "What is being tested (e.g., 'RMN drives 15% incremental sales')."
+        },
+        "test_markets": {
+          "type": "array",
+          "items": {"type": "string"},
+          "required": false,
+          "description": "List of geography_ids in test group."
+        },
+        "control_markets": {
+          "type": "array",
+          "items": {"type": "string"},
+          "required": false,
+          "description": "List of geography_ids in control group."
+        },
+        "test_audience_segment_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to audience_segment for audience holdout tests."
+        },
+        "control_audience_segment_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to audience_segment for control group."
+        },
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "Test start date."
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "Test end date."
+        },
+        "pre_period_start": {
+          "type": "string",
+          "format": "date",
+          "required": false,
+          "description": "Pre-test baseline period start."
+        },
+        "pre_period_end": {
+          "type": "string",
+          "format": "date",
+          "required": false,
+          "description": "Pre-test baseline period end."
+        },
+        "test_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["PLANNED", "IN_FLIGHT", "COMPLETED", "INVALIDATED", "CANCELLED"],
+          "default": "PLANNED"
+        },
+        "statistical_power": {
+          "type": "number",
+          "required": false,
+          "description": "Statistical power of test design (0-1)."
+        },
+        "minimum_detectable_effect": {
+          "type": "number",
+          "required": false,
+          "description": "Smallest lift% test can detect reliably."
+        },
+        "results": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "incremental_sales": {"type": "number"},
+            "incremental_units": {"type": "number"},
+            "incremental_lift_percentage": {"type": "number"},
+            "p_value": {"type": "number"},
+            "confidence_interval_lower": {"type": "number"},
+            "confidence_interval_upper": {"type": "number"},
+            "iroas": {"type": "number", "description": "Incremental ROAS"},
+            "control_group_sales": {"type": "number"},
+            "test_group_sales": {"type": "number"},
+            "baseline_sales_test": {"type": "number"},
+            "baseline_sales_control": {"type": "number"}
+          }
+        },
+        "invalidation_reason": {
+          "type": "string",
+          "required": false,
+          "description": "Why test was invalidated (e.g., 'stockout in test markets')."
+        },
+        "test_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["manufacturer_id", "test_status"], "type": "btree"},
+        {"fields": ["campaign_id"], "type": "btree"},
+        {"fields": ["start_date", "end_date"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "campaign_id", "references": "campaign.campaign_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "test_audience_segment_id", "references": "audience_segment.audience_segment_id"},
+          {"field": "control_audience_segment_id", "references": "audience_segment.audience_segment_id"}
+        ]
+      }
+    },
+
+    "platform_invoice": {
+      "description": "NEW: RMN platform billing invoices for spend reconciliation against reported metrics.",
+      "primary_key": "invoice_id",
+      "fields": {
+        "invoice_id": {
+          "type": "string",
+          "required": true,
+          "description": "Unique invoice identifier."
+        },
+        "manufacturer_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to manufacturer."
+        },
+        "channel_id": {
+          "type": "string",
+          "required": true,
+          "description": "FK to channel_rmn."
+        },
+        "platform_invoice_number": {
+          "type": "string",
+          "required": true,
+          "description": "Native invoice number from RMN platform."
+        },
+        "billing_period_start": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "Start of billing period."
+        },
+        "billing_period_end": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "End of billing period."
+        },
+        "invoice_date": {
+          "type": "string",
+          "format": "date",
+          "required": true,
+          "description": "Date invoice was issued."
+        },
+        "due_date": {
+          "type": "string",
+          "format": "date",
+          "required": false,
+          "description": "Payment due date."
+        },
+        "invoiced_amount": {
+          "type": "number",
+          "required": true,
+          "description": "Total amount on invoice."
+        },
+        "invoiced_currency": {
+          "type": "string",
+          "required": true,
+          "default": "USD"
+        },
+        "reported_spend": {
+          "type": "number",
+          "required": false,
+          "description": "Sum of spend from rmn_performance_fact for same period."
+        },
+        "variance": {
+          "type": "number",
+          "required": false,
+          "description": "invoiced_amount - reported_spend."
+        },
+        "variance_percentage": {
+          "type": "number",
+          "required": false,
+          "description": "Variance as % of invoiced amount."
+        },
+        "reconciliation_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["PENDING", "MATCHED", "MINOR_DISCREPANCY", "MAJOR_DISCREPANCY", "DISPUTED", "RESOLVED"],
+          "default": "PENDING"
+        },
+        "line_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "schema": {
+              "line_item_id": {"type": "string"},
+              "campaign_id": {"type": "string"},
+              "description": {"type": "string"},
+              "quantity": {"type": "number"},
+              "unit_price": {"type": "number"},
+              "total_amount": {"type": "number"}
+            }
+          },
+          "description": "Itemized charges on invoice."
+        },
+        "dispute_details": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "dispute_opened_date": {"type": "string", "format": "date"},
+            "dispute_reason": {"type": "string"},
+            "dispute_amount": {"type": "number"},
+            "resolution_date": {"type": "string", "format": "date"},
+            "resolution_notes": {"type": "string"}
+          }
+        },
+        "payment_status": {
+          "type": "string",
+          "required": true,
+          "enum": ["UNPAID", "PARTIALLY_PAID", "PAID", "OVERDUE"],
+          "default": "UNPAID"
+        },
+        "payment_date": {
+          "type": "string",
+          "format": "date",
+          "required": false
+        },
+        "invoice_attributes_ext": {"type": "object"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["manufacturer_id", "channel_id"], "type": "btree"},
+        {"fields": ["billing_period_start", "billing_period_end"], "type": "btree"},
+        {"fields": ["reconciliation_status"], "type": "btree"},
+        {"fields": ["platform_invoice_number"], "type": "btree", "unique": true}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"}
+        ]
+      }
+    },
+
+    "rmn_performance_fact": {
+      "description": "Enhanced fact table with attribution metadata, data quality tracking, and linkage to new dimensions.",
+      "primary_key": "fact_id",
+      "partition_key": "time_id",
+      "fields": {
+        "fact_id": {"type": "string", "required": true},
+        "manufacturer_id": {"type": "string", "required": true},
+        "sku_id_canonical": {"type": "string", "required": false},
+        "canonical_customer_id": {"type": "string", "required": false},
+        "geography_id": {"type": "string", "required": false},
+        "store_id": {"type": "string", "required": false},
+        "channel_id": {"type": "string", "required": true},
+        "campaign_id": {"type": "string", "required": false},
+        "ad_group_id": {"type": "string", "required": false},
+        "creative_id": {"type": "string", "required": false},
+        "audience_segment_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to audience_segment (NEW)."
+        },
+        "search_term_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to search_term (NEW)."
+        },
+        "promotion_id": {
+          "type": "string",
+          "required": false,
+          "description": "FK to promotion if sale occurred during promo (NEW)."
+        },
+        "time_id": {"type": "string", "required": true},
+        "aggregation_level": {
+          "type": "string",
+          "required": true,
+          "enum": ["DAILY", "WEEKLY", "MONTHLY", "CAMPAIGN", "LIFETIME"]
+        },
+        "impressions": {"type": "number", "required": false},
+        "clicks": {"type": "number", "required": false},
+        "spend": {"type": "number", "required": false},
+        "spend_currency": {"type": "string", "default": "USD"},
+        "attributed_sales": {"type": "number", "required": false},
+        "click_attributed_sales": {"type": "number", "required": false},
+        "view_attributed_sales": {"type": "number", "required": false},
+        "units_sold": {"type": "number", "required": false},
+        "incremental_units": {"type": "number", "required": false},
+        "base_units": {"type": "number", "required": false},
+        "gross_margin": {"type": "number", "required": false},
+        "roas": {"type": "number", "required": false},
+        "acos": {"type": "number", "required": false},
+        "halo_sales": {
+          "type": "number",
+          "required": false,
+          "description": "Sales lift on related products (NEW)."
+        },
+        "promotion_attributed_sales": {
+          "type": "number",
+          "required": false,
+          "description": "Sales directly tied to promotion vs media (NEW)."
+        },
+        "attribution_metadata": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "attribution_window_days": {"type": "integer"},
+            "attribution_model": {"type": "string"},
+            "attribution_confidence": {"type": "number"},
+            "click_through_conversions": {"type": "number"},
+            "view_through_conversions": {"type": "number"},
+            "total_conversions": {"type": "number"}
+          }
+        },
+        "conversion_events_ext": {"type": "object", "required": false},
+        "fact_attributes_ext": {"type": "object"},
+        "normalization_metadata": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "record_level_method": {"type": "string"},
+            "confidence_overall": {"type": "number", "min": 0, "max": 1},
+            "human_review_status": {"type": "string"},
+            "last_reviewed_by": {"type": "string"},
+            "last_reviewed_at": {"type": "string", "format": "date-time"},
+            "ontology_version": {"type": "string"}
+          }
+        },
+        "data_quality_score": {
+          "type": "object",
+          "schema": {
+            "completeness": {"type": "number", "min": 0, "max": 1},
+            "accuracy": {"type": "number", "min": 0, "max": 1},
+            "consistency": {"type": "number", "min": 0, "max": 1},
+            "timeliness": {"type": "number", "min": 0, "max": 1},
+            "validation_failures": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "normalization_error": {
+          "type": "object",
+          "required": false,
+          "schema": {
+            "error_code": {"type": "string"},
+            "error_message": {"type": "string"},
+            "failed_field": {"type": "string"},
+            "retry_count": {"type": "integer"},
+            "quarantined": {"type": "boolean", "default": false},
+            "quarantine_reason": {"type": "string"}
+          }
+        },
+        "source_metadata": {
+          "type": "object",
+          "required": true,
+          "schema": {
+            "source_system_id": {"type": "string"},
+            "source_system_name": {"type": "string"},
+            "source_file_path": {"type": "string"},
+            "source_record_id": {"type": "string"},
+            "ingestion_timestamp": {"type": "string", "format": "date-time"},
+            "ingestion_batch_id": {"type": "string"},
+            "source_schema_version": {"type": "string"}
+          }
+        },
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true},
+        "is_deleted": {"type": "boolean", "default": false}
+      },
+      "indexes": [
+        {"fields": ["manufacturer_id", "time_id"], "type": "btree"},
+        {"fields": ["campaign_id", "time_id"], "type": "btree"},
+        {"fields": ["sku_id_canonical", "time_id"], "type": "btree"},
+        {"fields": ["channel_id", "time_id"], "type": "btree"},
+        {"fields": ["audience_segment_id", "time_id"], "type": "btree"},
+        {"fields": ["search_term_id", "time_id"], "type": "btree"},
+        {"fields": ["promotion_id", "time_id"], "type": "btree"},
+        {"fields": ["aggregation_level"], "type": "btree"}
+      ],
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "sku_id_canonical", "references": "product.sku_id_canonical"},
+          {"field": "canonical_customer_id", "references": "customer.canonical_customer_id"},
+          {"field": "geography_id", "references": "geography.geography_id"},
+          {"field": "store_id", "references": "store.store_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "campaign_id", "references": "campaign.campaign_id"},
+          {"field": "ad_group_id", "references": "ad_group.ad_group_id"},
+          {"field": "creative_id", "references": "creative.creative_id"},
+          {"field": "audience_segment_id", "references": "audience_segment.audience_segment_id"},
+          {"field": "search_term_id", "references": "search_term.search_term_id"},
+          {"field": "promotion_id", "references": "promotion.promotion_id"},
+          {"field": "time_id", "references": "time.time_id"}
+        ]
+      },
+      "partitioning": {
+        "strategy": "RANGE",
+        "partition_by": "time_id",
+        "partition_interval": "MONTHLY",
+        "retention_policy": {
+          "raw_data_months": 36,
+          "aggregated_data_months": 60
+        }
+      }
+    },
+
+    "competitor_benchmark": {
+      "description": "Category and competitive benchmarking data with enhanced SOV metrics.",
+      "primary_key": "benchmark_id",
+      "fields": {
+        "benchmark_id": {"type": "string", "required": true},
+        "manufacturer_id": {"type": "string", "required": true},
+        "category_hierarchy_id": {"type": "string", "required": true},
+        "channel_id": {"type": "string", "required": true},
+        "geography_id": {"type": "string", "required": false},
+        "time_id": {"type": "string", "required": true},
+        "category_sales": {"type": "number"},
+        "category_units": {"type": "number"},
+        "manufacturer_sales": {"type": "number"},
+        "manufacturer_units": {"type": "number"},
+        "market_share_value": {"type": "number", "min": 0, "max": 1},
+        "market_share_units": {"type": "number", "min": 0, "max": 1},
+        "share_of_voice": {
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "description": "ENHANCED: Overall SOV across all placements."
+        },
+        "impression_share": {
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "required": false,
+          "description": "NEW: % of total category impressions captured."
+        },
+        "search_impression_share": {
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "required": false,
+          "description": "NEW: % of search ad impressions for category keywords."
+        },
+        "top_of_search_rate": {
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "required": false,
+          "description": "NEW: % of impressions in top search position."
+        },
+        "out_of_budget_lost_share": {
+          "type": "number",
+          "min": 0,
+          "max": 1,
+          "required": false,
+          "description": "NEW: Impression share lost due to budget constraints."
+        },
+        "avg_competitor_price": {"type": "number"},
+        "price_index": {"type": "number"},
+        "source_metadata": {"type": "object", "required": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"},
+          {"field": "category_hierarchy_id", "references": "product_hierarchy.hierarchy_id"},
+          {"field": "channel_id", "references": "channel_rmn.channel_id"},
+          {"field": "geography_id", "references": "geography.geography_id"},
+          {"field": "time_id", "references": "time.time_id"}
+        ]
+      }
+    },
+
+    "alert_rule": {
+      "description": "Configurable alert rules for automated monitoring.",
+      "primary_key": "alert_rule_id",
+      "fields": {
+        "alert_rule_id": {"type": "string", "required": true},
+        "manufacturer_id": {"type": "string", "required": true},
+        "rule_name": {"type": "string", "required": true},
+        "rule_type": {
+          "type": "string",
+          "enum": ["THRESHOLD", "ANOMALY", "TREND", "COMPARISON"]
+        },
+        "metric_name": {"type": "string"},
+        "threshold_config": {
+          "type": "object",
+          "schema": {
+            "operator": {"type": "string", "enum": ["GT", "LT", "EQ", "GTE", "LTE"]},
+            "threshold_value": {"type": "number"},
+            "consecutive_periods": {"type": "integer"}
+          }
+        },
+        "anomaly_config": {
+          "type": "object",
+          "schema": {
+            "detection_method": {"type": "string", "enum": ["STDEV", "IQR", "ML_MODEL"]},
+            "sensitivity": {"type": "number", "min": 0, "max": 1},
+            "lookback_periods": {"type": "integer"}
+          }
+        },
+        "notification_channels": {"type": "array", "items": {"type": "string"}},
+        "is_active": {"type": "boolean", "default": true},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "constraints": {
+        "foreign_keys": [
+          {"field": "manufacturer_id", "references": "manufacturer.manufacturer_id"}
+        ]
+      }
+    },
+
+    "incremental_load_checkpoint": {
+      "description": "Track incremental load progress per source system.",
+      "primary_key": "checkpoint_id",
+      "fields": {
+        "checkpoint_id": {"type": "string", "required": true},
+        "source_system_id": {"type": "string", "required": true},
+        "source_system_name": {"type": "string", "required": true},
+        "entity_name": {"type": "string", "required": true},
+        "last_successful_load_timestamp": {"type": "string", "format": "date-time"},
+        "last_record_timestamp": {"type": "string", "format": "date-time"},
+        "last_batch_id": {"type": "string"},
+        "records_processed": {"type": "integer"},
+        "records_failed": {"type": "integer"},
+        "checkpoint_metadata": {"type": "object"},
+        "created_at": {"type": "string", "format": "date-time", "required": true},
+        "updated_at": {"type": "string", "format": "date-time", "required": true}
+      },
+      "indexes": [
+        {"fields": ["source_system_id", "entity_name"], "type": "btree", "unique": true}
+      ]
+    }
+  },
+
+  "normalization_audit_schema": {
+    "description": "Enhanced per-field normalization audit trail with execution metrics.",
+    "primary_key": "audit_id",
+    "partition_key": "entity_name",
+    "fields": {
+      "audit_id": {"type": "string", "required": true},
+      "entity_name": {"type": "string", "required": true},
+      "entity_primary_key": {"type": "string", "required": true},
+      "field_name": {"type": "string", "required": true},
+      "source_value": {"type": "string", "required": false},
+      "normalized_value": {"type": "string", "required": false},
+      "method_used": {
+        "type": "string",
+        "enum": ["RULE", "SEMANTIC", "LLM", "LORA", "HYBRID"],
+        "required": true
+      },
+      "method_chain_executed": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "schema": {
+            "method": {"type": "string"},
+            "attempted_at": {"type": "string", "format": "date-time"},
+            "execution_time_ms": {"type": "number"},
+            "confidence": {"type": "number"},
+            "success": {"type": "boolean"},
+            "error_message": {"type": "string"}
+          }
+        }
+      },
+      "model_id": {"type": "string"},
+      "model_version": {"type": "string"},
+      "rule_id": {"type": "string"},
+      "rule_version": {"type": "string"},
+      "confidence": {"type": "number", "min": 0, "max": 1},
+      "human_review_status": {
+        "type": "string",
+        "enum": ["NOT_REQUIRED", "PENDING", "APPROVED", "CORRECTED", "REJECTED", "ESCALATED"],
+        "required": true
+      },
+      "review_workflow": {
+        "type": "object",
+        "schema": {
+          "priority": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+          "assigned_to": {"type": "string"},
+          "assigned_at": {"type": "string", "format": "date-time"},
+          "due_by": {"type": "string", "format": "date-time"},
+          "escalated": {"type": "boolean", "default": false},
+          "review_category": {"type": "string"}
+        }
+      },
+      "human_comment": {"type": "string"},
+      "corrected_value": {"type": "string"},
+      "reviewed_by": {"type": "string"},
+      "reviewed_at": {"type": "string", "format": "date-time"},
+      "ontology_version": {"type": "string"},
+      "source_metadata": {"type": "object"},
+      "created_at": {"type": "string", "format": "date-time", "required": true},
+      "updated_at": {"type": "string", "format": "date-time", "required": true}
+    }
+  },
+
+  "data_quality_rules": {
+    "description": "Configurable data quality validation rules.",
+    "entities": {
+      "product": [
+        {
+          "rule_id": "PRD001",
+          "rule_name": "UPC_FORMAT_VALIDATION",
+          "field": "upc_gtin",
+          "validation_type": "REGEX",
+          "validation_expression": "^\\d{12,14}$",
+          "severity": "ERROR"
+        },
+        {
+          "rule_id": "PRD002",
+          "rule_name": "PRODUCT_DESCRIPTION_MIN_LENGTH",
+          "field": "product_description",
+          "validation_type": "LENGTH",
+          "min_length": 10,
+          "severity": "WARNING"
+        }
+      ],
+      "rmn_performance_fact": [
+        {
+          "rule_id": "FACT001",
+          "rule_name": "ROAS_RANGE_CHECK",
+          "field": "roas",
+          "validation_type": "RANGE",
+          "min_value": 0,
+          "max_value": 100,
+          "severity": "WARNING"
+        },
+        {
+          "rule_id": "FACT002",
+          "rule_name": "SPEND_POSITIVE",
+          "field": "spend",
+          "validation_type": "RANGE",
+          "min_value": 0,
+          "severity": "ERROR"
+        }
+      ]
+    }
+  },
+
+  "integration_patterns": {
+    "description": "Recommended integration patterns for different scenarios.",
+    "patterns": {
+      "full_refresh": {
+        "description": "Complete data reload from source.",
+        "use_cases": ["Initial load", "Monthly aggregates"],
+        "steps": [
+          "Truncate target table or create new partition",
+          "Extract full dataset from source",
+          "Apply normalization pipeline",
+          "Load into target",
+          "Update checkpoint"
+        ]
+      },
+      "incremental_cdc": {
+        "description": "Change data capture for delta processing.",
+        "use_cases": ["Daily fact loads", "Dimension updates"],
+        "steps": [
+          "Query checkpoint for last load timestamp",
+          "Extract changed records",
+          "Apply normalization pipeline",
+          "Upsert into target",
+          "Handle SCD Type 2 for dimensions",
+          "Update checkpoint"
+        ]
+      }
+    }
+  },
+
+  "governance_policies": {
+    "data_retention": {
+      "rmn_performance_fact_daily": {
+        "retention_days": 1095,
+        "archive_after_days": 730
+      },
+      "customer": {
+        "retention_days": null,
+        "deletion_on_consent_revoke": true
+      },
+      "normalization_audit_schema": {
+        "retention_days": 1825
+      }
+    },
+    "data_classification": {
+      "PII_FIELDS": [
+        "customer.canonical_customer_id",
+        "customer.household_id",
+        "customer.loyalty_id_hash"
+      ],
+      "CONFIDENTIAL_FIELDS": [
+        "manufacturer_rmn_contract.minimum_spend_commitment",
+        "campaign.budget_total",
+        "rmn_performance_fact.spend"
+      ]
+    }
+  },
+
+  "api_versioning": {
+    "current_version": "2.1.0",
+    "supported_versions": ["2.1.0", "2.0.0"],
+    "deprecation_schedule": {
+      "2.0.0": {
+        "deprecated_date": "2025-11-18",
+        "sunset_date": "2026-05-18",
+        "breaking_changes": [
+          "Added audience_segment entity",
+          "Added search_term entity",
+          "Added promotion entity",
+          "Added incrementality_test entity",
+          "Added product_relationship entity",
+          "Added campaign_pacing entity",
+          "Added platform_invoice entity",
+          "Enhanced competitor_benchmark with SOV fields"
+        ]
+      }
+    }
+  }
+}
+ 

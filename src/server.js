@@ -13,6 +13,7 @@ import MemoryService from './services/MemoryService.js';
 import ResponseBuilder from './services/ResponseBuilder.js';
 import PromptService from './services/PromptService.js';
 import CrewAIBridgeService from './services/CrewAIBridgeService.js';
+import LangChainChatbotService from './services/LangChainChatbotService.js';
 import { logger } from './utils/logger.js';
 import { validateProcessMessageRequest } from './utils/validators.js';
 
@@ -24,6 +25,42 @@ const crewAIBridge = new CrewAIBridgeService();
 const agentOrchestrator = new AgentOrchestrator(crewAIBridge);
 const memoryService = new MemoryService();
 const responseBuilder = new ResponseBuilder(promptService);
+const langChainChatbot = new LangChainChatbotService();
+
+/**
+ * Normalize and extract agentTag from multiple possible locations (robust)
+ */
+function normalizeAgentTag(tag) {
+  if (!tag || typeof tag !== 'string') return null;
+  return tag.trim().toLowerCase();
+}
+
+function extractAgentTag(req, body) {
+  // Prefer top-level
+  let tag =
+    body?.agentTag ||
+    body?.agent_tag ||
+    body?.agent ||
+    body?.tag ||
+    body?.context?.agentTag ||
+    body?.context?.agent ||
+    null;
+  // Allow header override
+  if (!tag && req?.headers) {
+    tag = req.headers['x-agent-tag'] || req.headers['x-agent'] || null;
+  }
+  // Allow query string override
+  try {
+    const parsed = parse(req.url, true);
+    const query = parsed && parsed.query;
+    if (!tag && query && (query.agentTag || query.agent || query.tag)) {
+      tag = query.agentTag || query.agent || query.tag;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return normalizeAgentTag(tag);
+}
 
 // Initialize all services
 async function initialize() {
@@ -37,6 +74,7 @@ async function initialize() {
     await agentOrchestrator.initialize();
     await memoryService.initialize();
     await responseBuilder.initialize();
+    await langChainChatbot.initialize();
     
     // Preload commonly used prompts
     if (promptService.isHealthy()) {
@@ -49,6 +87,7 @@ async function initialize() {
     process.exit(1);
   }
 }
+
 
 // Main request handler
 async function handleProcessMessage(req, res) {
@@ -78,193 +117,175 @@ async function handleProcessMessage(req, res) {
     }
     
     const { message, conversationId, context } = requestData;
-    const userId = context?.userId || 'anonymous';
-    const tenantId = context?.tenantId || 'default';
+    // Check for direct agent tag (skips intent/template discovery) - prefer explicit field
+    const agentTagPrimary = normalizeAgentTag(requestData.agentTag);
+    const agentTag = agentTagPrimary || extractAgentTag(req, requestData);
     
     logger.info('🎯 Request details', {
       requestId,
       message: message.slice(0, 60),
-      conversationId,
-      userId,
-      tenantId
+      conversationId: conversationId || 'none',
+      agentTag: agentTag || 'none'
     });
     
-    // STEP 1: Intent Classification (Fast, with timeout)
-    logger.info('🔍 Classifying intent...', { requestId });
-    const intentPromise = intentRouter.classifyIntent(message, context);
-    const intentTimeout = new Promise(resolve => 
-      setTimeout(() => resolve(null), 5000) // Increased to 5s for OpenAI API latency
-    );
+    // If conversationId is provided, use CrewAI conversational agent
+    // Otherwise, fall back to LangChain chatbot
+    let response;
     
-    let intent = await Promise.race([intentPromise, intentTimeout]);
-    
-    if (!intent) {
-      const elapsed = Date.now() - startTime;
-      logger.warn('⏱️ Intent classification timeout, using fallback', { 
-        requestId,
-        elapsed: `${elapsed}ms`,
-        timeout: '5000ms'
-      });
-      intent = {
-        type: 'analysis',
-        intent: 'GENERAL_QUERY',
-        confidence: 0.5,
-        explanation: `Timeout after ${elapsed}ms - using fallback (OpenAI API may be slow)`
-      };
-    } else {
-      const elapsed = Date.now() - startTime;
-      logger.info('✅ Intent classified', {
-        requestId,
-        intent: intent.intent,
-        confidence: intent.confidence,
-        elapsed: `${elapsed}ms`
-      });
-    }
-    
-    // STEP 2: Memory Retrieval (Fast context enrichment)
-    logger.info('🧠 Retrieving memory context...', { requestId });
-    const memoryContext = await memoryService.getContext(conversationId, userId, {
-      query: message,
-      intent: intent.intent
-    });
-    
-    // STEP 3: Template Discovery
-    logger.info('📋 Discovering templates...', { requestId });
-    const templates = await templateEngine.discoverTemplates(
-      message,
-      intent.intent,
-      memoryContext
-    );
-    
-    logger.info('✅ Templates discovered', {
-      requestId,
-      count: templates.length,
-      templates: templates.map(t => t.name)
-    });
-    
-    // STEP 4: Check if we should wait for agent results
-    const waitForResults = requestData.waitForResults !== false; // Default: true (wait for results)
-    const maxWaitTime = requestData.maxWaitTime || Math.max(config.maxAgentTimeoutMs, 120000); // At least 120s, or configured
-    
-    // STEP 5: Execute agents (wait for results if requested)
-    let agentResults = null;
-    if (templates.length > 0) {
-      if (waitForResults) {
-        logger.info('🤖 Executing agents (waiting for results)...', { requestId });
+    if (conversationId) {
+      logger.info('💬 Using CrewAI conversational agent (conversationId provided)', { requestId, conversationId });
+      
+      try {
+        // Execute CrewAI conversational agent via Redis
+        const agentResult = await crewAIBridge.executeAgent(
+          'conversational',
+          {
+            task_description: 'Process user query in a conversational manner',
+            inputs: {
+              query: message,
+              conversation_id: conversationId,
+              context: {
+                systemPrompt: context?.systemPrompt || 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.',
+                ...context
+              }
+            }
+          },
+          90000 // 90 second timeout
+        );
         
-        const agentStartTime = Date.now();
-        try {
-          agentResults = await Promise.race([
-            agentOrchestrator.orchestrate({
-              query: message,
-              intent,
-              templates,
-              context: memoryContext,
-              conversationId,
-              userId,
-              tenantId
-            }),
-            new Promise((resolve) => 
-              setTimeout(() => resolve({ timeout: true, error: 'Agent execution timeout', partialResults: null }), maxWaitTime)
-            )
-          ]);
-          
-          if (agentResults && !agentResults.timeout) {
-            logger.info('✅ Agent orchestration complete', {
-              requestId,
-              agentsInvolved: agentResults.agents?.length || 0,
-              totalTime: `${Date.now() - agentStartTime}ms`
-            });
-            
-            // Store results in memory for future context
-            await memoryService.storeExecution({
-              conversationId,
-              userId,
-              query: message,
-              intent,
-              agentResults,
-              timestamp: new Date().toISOString()
-            });
-          } else {
-            // Timeout occurred - try to get partial results if available
-            logger.warn('⏱️ Agent execution timeout', { requestId, maxWaitTime });
-            // If orchestrate was called but timed out, we might have partial results
-            // For now, set timeout flag but keep structure
-            const timeoutSeconds = Math.round(maxWaitTime / 1000);
-            agentResults = {
-              timeout: true,
-              message: 'Agent execution exceeded timeout',
-              agents: [],
-              results: [],
-              summary: null,
-              metrics: null,
-              error: `Timeout after ${timeoutSeconds} seconds - agents may still be processing`
-            };
-          }
-        } catch (agentError) {
-          logger.error('❌ Agent orchestration error', {
-            requestId,
-            error: agentError.message,
-            stack: agentError.stack
-          });
-          agentResults = { error: agentError.message };
+        // Extract response text and history length
+        const responseText = typeof agentResult.result === 'object' 
+          ? (agentResult.result.output || agentResult.result.result || JSON.stringify(agentResult.result))
+          : (agentResult.result || agentResult.response || 'I apologize, but I could not generate a response.');
+        
+        // Extract history_length from result (may be in nested structure)
+        let historyLength = 0;
+        if (typeof agentResult.result === 'object') {
+          historyLength = agentResult.result.history_length || agentResult.result.historyLength || 0;
         }
-      } else {
-        // Background processing (non-blocking)
-        logger.info('🤖 Starting background agent orchestration', { requestId });
-        setImmediate(async () => {
-          try {
-            const bgResults = await agentOrchestrator.orchestrate({
-              query: message,
-              intent,
-              templates,
-              context: memoryContext,
-              conversationId,
-              userId,
-              tenantId
-            });
-            
-            logger.info('✅ Background agent orchestration complete', {
+        
+        // Build response from CrewAI agent result (include function calling metadata if present)
+        response = {
+          requestId,
+          query: message,
+          conversationId,
+          response: responseText,
+          // Cursor/Windsurf style structured fields
+          function_calls: Array.isArray(agentResult.function_calls) ? agentResult.function_calls : [],
+          metadata: typeof agentResult.metadata === 'object' && agentResult.metadata !== null
+            ? agentResult.metadata
+            : { conversation_id: conversationId },
+          timestamp: new Date().toISOString(),
+          processingTime: agentResult.processingTime || (typeof agentResult.result === 'object' ? agentResult.result.processing_time : null) || (Date.now() - startTime),
+          turnEnvelope: {
+            ack: `I understand your question: "${message.slice(0, 50)}${message.length > 50 ? '...' : ''}"`,
+            plan: {
+              steps: ['Processed query with CrewAI conversational agent', 'Retrieved conversation history from Pinecone', 'Generated response using CrewAI']
+            },
+            ask: null,
+            memory: {
+              conversationHistory: historyLength
+            },
+            meta: {
+              mode: 'conversational',
+              service: 'CrewAI',
+              agent: 'conversational',
+              memoryBackend: 'Pinecone',
               requestId,
-              agentsInvolved: bgResults.agents.length,
-              totalTime: `${Date.now() - startTime}ms`
-            });
-            
-            await memoryService.storeExecution({
-              conversationId,
-              userId,
-              query: message,
-              intent,
-              agentResults: bgResults,
-              timestamp: new Date().toISOString()
-            });
-          } catch (bgError) {
-            logger.error('❌ Background orchestration error', {
-              requestId,
-              error: bgError.message
-            });
+              taskId: agentResult.task_id
+            }
           }
+        };
+      } catch (agentError) {
+        logger.error('❌ CrewAI conversational agent error', {
+          requestId,
+          error: agentError.message,
+          conversationId
         });
+        
+        // Fall back to LangChain chatbot on error
+        logger.info('🔄 Falling back to LangChain chatbot', { requestId });
+        const chatbotResponse = await langChainChatbot.processMessage(
+          message,
+          conversationId,
+          {
+            systemPrompt: context?.systemPrompt || 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.',
+            ...context
+          }
+        );
+        
+        response = {
+          requestId,
+          query: message,
+          conversationId,
+          response: chatbotResponse.response,
+          timestamp: chatbotResponse.timestamp,
+          processingTime: chatbotResponse.processingTime,
+          turnEnvelope: {
+            ack: `I understand your question: "${message.slice(0, 50)}${message.length > 50 ? '...' : ''}"`,
+            plan: {
+              steps: ['Processed query with LangChain chatbot (fallback)', 'Retrieved conversation history from Pinecone', 'Generated response using OpenAI']
+            },
+            ask: null,
+            memory: {
+              conversationHistory: chatbotResponse.historyLength || 0
+            },
+            meta: {
+              mode: 'chatbot',
+              service: 'LangChain',
+              memoryBackend: langChainChatbot.pineconeHost ? 'Pinecone' : 'In-Memory',
+              requestId,
+              fallback: true,
+              error: agentError.message
+            }
+          }
+        };
       }
+    } else {
+      // No conversationId: use LangChain chatbot
+      logger.info('💬 Using LangChain chatbot (no conversationId provided)', { requestId });
+      
+      const chatbotResponse = await langChainChatbot.processMessage(
+        message,
+        conversationId,
+        {
+          systemPrompt: context?.systemPrompt || 'You are a helpful AI assistant. Provide clear, concise, and accurate responses.',
+          ...context
+        }
+      );
+      
+      response = {
+        requestId,
+        query: message,
+        conversationId,
+        response: chatbotResponse.response,
+        timestamp: chatbotResponse.timestamp,
+        processingTime: chatbotResponse.processingTime,
+        turnEnvelope: {
+          ack: `I understand your question: "${message.slice(0, 50)}${message.length > 50 ? '...' : ''}"`,
+          plan: {
+            steps: ['Processed query with LangChain chatbot', 'Retrieved conversation history from Pinecone', 'Generated response using OpenAI']
+          },
+          ask: null,
+          memory: {
+            conversationHistory: chatbotResponse.historyLength || 0
+          },
+          meta: {
+            mode: 'chatbot',
+            service: 'LangChain',
+            memoryBackend: langChainChatbot.pineconeHost ? 'Pinecone' : 'In-Memory',
+            requestId
+          }
+        }
+      };
     }
-    
-    // STEP 6: Build response with agent results
-    const response = responseBuilder.buildResponse({
-      query: message,
-      intent,
-      templates,
-      memoryContext,
-      requestId,
-      conversationId,
-      agentResults // Include agent results if available
-    });
     
     // Send response
     const processingTime = Date.now() - startTime;
     logger.info('⚡ Sending response', {
       requestId,
       processingTime: `${processingTime}ms`,
-      includesAgentResults: !!agentResults
+      mode: 'chatbot'
     });
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -298,7 +319,8 @@ function handleHealth(req, res) {
       intentRouter: intentRouter.isHealthy(),
       templateEngine: templateEngine.isHealthy(),
       agentOrchestrator: agentOrchestrator.isHealthy(),
-      memoryService: memoryService.isHealthy()
+      memoryService: memoryService.isHealthy(),
+      langChainChatbot: langChainChatbot.isHealthy()
     },
     config: {
       port: config.port,

@@ -1,0 +1,37 @@
+{
+  "name": "retail-analytics-cube",
+  "version": "1.0.0",
+  "description": "Retail Analytics Datacube - Multi-domain retail metrics API",
+  "main": "cube.js",
+  "scripts": {
+    "dev": "cubejs-server",
+    "build": "echo 'No build step required'",
+    "start": "cubejs-server",
+    "test": "echo 'No tests yet'"
+  },
+  "dependencies": {
+    "@cubejs-backend/duckdb-driver": "^0.35.0",
+    "@cubejs-backend/server": "^0.35.0"
+  },
+  "devDependencies": {
+    "@cubejs-backend/testing-shared": "^0.35.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "retail",
+    "analytics",
+    "datacube",
+    "duckdb",
+    "cube.dev",
+    "pos",
+    "inventory",
+    "marketing",
+    "merchandising",
+    "procurement"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+

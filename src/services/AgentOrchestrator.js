@@ -16,6 +16,7 @@ export default class AgentOrchestrator {
     this.activeAgents = new Map();
     this.useRealAgents = config.redis.enabled; // Use real agents if Redis available
     this.discoveryService = new UnifiedAgentDiscoveryService({ threshold: 0.72 });
+    this.templateRelevanceThreshold = 0.72; // Threshold for template relevance
   }
 
   async initialize() {
@@ -92,54 +93,133 @@ export default class AgentOrchestrator {
       templatesCount: templates.length
     });
 
-    // STEP 1: Try discovery first to check confidence scores
-    const entities = intent.entities || {};
-    const discovery = await this.discoveryService.discoverAndExecuteAgents(query, intent, entities, templates);
+    // STEP 1: Check template relevance first (NEW LOGIC)
+    // If any template has relevance >= threshold, use templates and skip dynamic agent creation
+    // If NO templates found, create and execute dynamic agent
+    let shouldUseTemplates = false;
+    let topRelevanceTemplate = null;
     
-    // STEP 2: If high confidence agents found, use them; otherwise check templates/defaults
-    let selectedAgents = [];
-    
-    if ((discovery.highConfidence || []).length > 0) {
-      const ids = new Set(discovery.highConfidence.map(a => a.id.toLowerCase()));
-      selectedAgents = agentRegistry.filter(a => ids.has(a.id));
-      logger.info(`🔎 Discovery selected ${selectedAgents.length} high-confidence agent(s): ${selectedAgents.map(a => a.name).join(', ')}`);
-    } else {
-      // No high-confidence matches: prioritize dynamic agent creation over templates
-      if (discovery.dynamicAgentSpec) {
-        // Dynamic agent spec available - skip templates and create dynamic agent
-        logger.info('🔧 Dynamic agent spec available - skipping templates/defaults');
-        selectedAgents = []; // Clear to trigger dynamic agent creation
-      } else if (templates && templates.length > 0) {
-        // No dynamic spec but templates available - use them
-        selectedAgents = this.selectAgents(templates, intent);
-        logger.info('✅ Agents selected from templates', {
-          count: selectedAgents.length,
-          agents: selectedAgents.map(a => a.name)
+    if (!templates || templates.length === 0) {
+      // NO TEMPLATES FOUND - Create and execute dynamic agent
+      logger.info('📋 Template relevance check: No templates found - will create dynamic agent', {
+        threshold: this.templateRelevanceThreshold,
+        totalTemplates: 0
+      });
+    } else if (templates && templates.length > 0) {
+      // Templates found - check if any meet relevance threshold
+      const highRelevanceTemplates = templates.filter(t => (t.relevance || 0) >= this.templateRelevanceThreshold);
+      
+      if (highRelevanceTemplates.length > 0) {
+        // Sort by relevance and get the top one
+        highRelevanceTemplates.sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+        topRelevanceTemplate = highRelevanceTemplates[0];
+        shouldUseTemplates = true;
+        
+        logger.info('📋 Template relevance check: Found high-relevance template(s)', {
+          threshold: this.templateRelevanceThreshold,
+          topTemplate: topRelevanceTemplate.name,
+          topRelevance: topRelevanceTemplate.relevance,
+          highRelevanceCount: highRelevanceTemplates.length,
+          totalTemplates: templates.length
         });
       } else {
-        // No templates and no dynamic spec - will use defaults
-        logger.info('⚠️  No high-confidence agents, no templates, no dynamic spec - using defaults');
+        // Templates found but none meet threshold - will create dynamic agent
+        const maxRelevance = templates.length > 0 
+          ? Math.max(...templates.map(t => t.relevance || 0))
+          : 0;
+        logger.info('📋 Template relevance check: No templates meet threshold - will create dynamic agent', {
+          threshold: this.templateRelevanceThreshold,
+          maxRelevance: maxRelevance,
+          totalTemplates: templates.length
+        });
       }
     }
 
-    // Execute selected agents if we have any (but not if we have a dynamic spec to create)
-    if (selectedAgents.length > 0 && !discovery.dynamicAgentSpec) {
+    // STEP 2: If templates meet threshold, use them (skip dynamic agent creation)
+    let selectedAgents = [];
+    let discovery = null;
+    
+    if (shouldUseTemplates && topRelevanceTemplate) {
+      // Use templates - select agents from the top relevance template
+      logger.info('✅ Using templates (relevance-based decision) - skipping dynamic agent creation', {
+        templateName: topRelevanceTemplate.name,
+        templateRelevance: topRelevanceTemplate.relevance
+      });
+      
+      // Select agents strictly from the top relevance template (no defaults)
+      selectedAgents = this.selectAgents([topRelevanceTemplate], intent, { useDefaults: false });
+      
+      // Only use agents from the single highest-relevance template (do not merge others)
+      
+      logger.info('✅ Agents selected from high-relevance templates', {
+        count: selectedAgents.length,
+        agents: selectedAgents.map(a => a.name),
+        templatesUsed: [topRelevanceTemplate.name]
+      });
+      
+      // Still run discovery for metadata (confidence scores), but don't use it for decision
+      const entities = intent.entities || {};
+      discovery = await this.discoveryService.discoverAndExecuteAgents(query, intent, entities, templates);
+    } else {
+      // STEP 3: No templates found OR no templates meet threshold - create dynamic agent directly (skip agent confidence calculation)
+      const entities = intent.entities || {};
+      
+      // Skip agent discovery/confidence calculation - go straight to dynamic agent creation
+      logger.info('🔧 No high-relevance templates found - creating dynamic agent directly (skipping agent confidence calculation)');
+      
+      // Generate dynamic agent spec directly without calculating agent confidence
+      const dynamicAgentSpec = await this.discoveryService.generateDynamicAgentConfig(query, intent, entities);
+      
+      // Create discovery object with dynamic agent spec (no agent discovery performed)
+      discovery = {
+        discovered: [],
+        highConfidence: [],
+        dynamicAgentSpec: dynamicAgentSpec
+      };
+      
+      // Clear selected agents to trigger dynamic agent creation
+      selectedAgents = [];
+      
+      logger.info('✅ Dynamic agent spec generated (agent confidence calculation skipped)', {
+        agentName: dynamicAgentSpec?.agentName || 'Unknown',
+        capabilities: dynamicAgentSpec?.capabilities?.length || 0
+      });
+    }
+
+    // Execute selected agents if we have any (but not if we have a dynamic spec to create and templates didn't meet threshold)
+    if (selectedAgents.length > 0 && (!discovery?.dynamicAgentSpec || shouldUseTemplates)) {
       const agentResults = await this.executeAgents(selectedAgents, {
         query, intent, context, conversationId, userId, tenantId
       });
       const aggregated = this.aggregateResults(agentResults, query, intent);
       const totalTime = Date.now() - startTime;
       
-      // Map confidence scores for selected agents
+      // Map confidence scores for selected agents (if discovery was run)
       const confidenceMap = new Map();
-      (discovery.discovered || []).forEach(agent => {
-        confidenceMap.set(agent.id.toLowerCase(), agent.confidence);
-      });
+      if (discovery && discovery.discovered) {
+        discovery.discovered.forEach(agent => {
+          confidenceMap.set(agent.id.toLowerCase(), agent.confidence);
+        });
+      }
       const agentConfidences = selectedAgents.map(a => ({
         agentId: a.id,
         agentName: a.name,
         confidence: confidenceMap.get(a.id.toLowerCase()) || null
       }));
+      
+      // Include template relevance information in discovery metadata
+      const templateRelevanceInfo = shouldUseTemplates && topRelevanceTemplate ? {
+        templateBased: true,
+        topTemplateName: topRelevanceTemplate.name,
+        topTemplateRelevance: topRelevanceTemplate.relevance,
+        templateRelevanceThreshold: this.templateRelevanceThreshold
+      } : {
+        templateBased: false,
+        maxTemplateRelevance: templates && templates.length > 0 
+          ? Math.max(...templates.map(t => t.relevance || 0))
+          : (templates && templates.length === 0 ? 0 : null),
+        templateRelevanceThreshold: this.templateRelevanceThreshold
+      };
       
       return {
         agents: selectedAgents.map(a => a.name),
@@ -151,11 +231,13 @@ export default class AgentOrchestrator {
           successRate: agentResults.filter(r => r.success).length / (agentResults.length || 1)
         },
         discovery: { 
-          used: true, 
-          highConfidence: discovery.highConfidence || [],
+          used: true,
+          templateBasedDecision: shouldUseTemplates,
+          ...templateRelevanceInfo,
+          highConfidence: discovery?.highConfidence || [],
           confidenceScores: agentConfidences,
           threshold: this.discoveryService.threshold,
-          maxConfidence: discovery.discovered && discovery.discovered.length > 0 
+          maxConfidence: discovery?.discovered && discovery.discovered.length > 0 
             ? Math.max(...discovery.discovered.map(a => a.confidence)) 
             : null
         }
@@ -163,7 +245,8 @@ export default class AgentOrchestrator {
     }
 
     // If no agents chosen and we have a dynamic spec, create dynamic agent
-    if (discovery.dynamicAgentSpec) {
+    // (Only if templates didn't meet threshold)
+    if (discovery?.dynamicAgentSpec && !shouldUseTemplates) {
         logger.info('🔧 Dynamic agent spec generated - creating agent via Python factory');
         
         // Call Python factory to create the agent
@@ -223,18 +306,19 @@ export default class AgentOrchestrator {
               successRate: agentResults.filter(r => r.success).length / (agentResults.length || 1)
             },
             discovery: {
-              used: true,
+              used: false, // Agent discovery was skipped
+              agentConfidenceCalculated: false, // Skipped agent confidence calculation
+              templateBasedDecision: false,
+              templateRelevanceThreshold: this.templateRelevanceThreshold,
+              maxTemplateRelevance: templates && templates.length > 0 
+                ? Math.max(...templates.map(t => t.relevance || 0)) 
+                : null,
               dynamicAgentCreated: true,
               agentId: agentCreationResult.agent_id,
               agentSpec: discovery.dynamicAgentSpec,
               threshold: this.discoveryService.threshold,
-              maxConfidence: discovery.discovered && discovery.discovered.length > 0 
-                ? Math.max(...discovery.discovered.map(a => a.confidence)) 
-                : null,
-              topConfidenceScores: (discovery.discovered || [])
-                .sort((a, b) => b.confidence - a.confidence)
-                .slice(0, 5)
-                .map(a => ({ agentId: a.id, agentName: a.name, confidence: a.confidence }))
+              maxConfidence: null, // Not calculated
+              topConfidenceScores: [] // Not calculated
             }
           };
         } else {
@@ -298,7 +382,7 @@ export default class AgentOrchestrator {
   /**
    * Select appropriate agents based on templates
    */
-  selectAgents(templates, intent) {
+  selectAgents(templates, intent, options = { useDefaults: true }) {
     const agentIds = new Set();
 
     // Extract agents from templates
@@ -307,8 +391,8 @@ export default class AgentOrchestrator {
       agents.forEach(agentId => agentIds.add(agentId));
     });
 
-    // If no agents specified in templates, use default agents based on intent
-    if (agentIds.size === 0) {
+    // If allowed and no agents specified in templates, use default agents based on intent
+    if (options.useDefaults && agentIds.size === 0) {
       const defaultAgents = this.getDefaultAgentsForIntent(intent.intent);
       defaultAgents.forEach(agentId => agentIds.add(agentId));
     }

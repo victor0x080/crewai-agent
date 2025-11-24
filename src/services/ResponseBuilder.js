@@ -4,11 +4,21 @@
  */
 
 import { logger } from '../utils/logger.js';
+import OpenAI from 'openai';
+import config from '../config/index.js';
 
 export default class ResponseBuilder {
   constructor(promptService = null) {
     this.promptService = promptService;
     this.healthy = true;
+    this.openai = null;
+    
+    // Initialize OpenAI client if API key is available
+    if (config.openai.enabled && config.openai.apiKey) {
+      this.openai = new OpenAI({
+        apiKey: config.openai.apiKey
+      });
+    }
   }
 
   async initialize() {
@@ -22,10 +32,11 @@ export default class ResponseBuilder {
   /**
    * Build response with optional agent results
    */
-  buildResponse({ query, intent, templates, memoryContext, requestId, conversationId, agentResults }) {
+  async buildResponse({ query, intent, templates, memoryContext, requestId, conversationId, agentResults }) {
     // If agent results are available, build answer from them
     let ack = this.buildAcknowledgment(query, intent, templates);
     let answer = null;
+    let conversationalResponse = null;
     
     if (agentResults && !agentResults.timeout && !agentResults.error) {
       logger.info('📊 Building answer from agent results', {
@@ -43,10 +54,36 @@ export default class ResponseBuilder {
         logger.info('✅ Built answer from successful results', { answerLength: answer?.length || 0 });
       } else if (agentResults.summary) {
         // Try to get answer from summary
-        answer = agentResults.summary.synthesizedAnswer || 
+        let rawAnswer = agentResults.summary.synthesizedAnswer || 
                  agentResults.summary.answer || 
                  agentResults.summary.summary ||
                  null;
+        
+        // Helper to extract readable text from potentially JSON-encoded strings
+        const extractReadableText = (text) => {
+          if (!text) return null;
+          if (typeof text !== 'string') return String(text);
+          
+          // Try to parse as JSON if it looks like JSON
+          if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+            try {
+              const parsed = JSON.parse(text);
+              // If parsed object has 'output' field, extract it
+              if (parsed && typeof parsed === 'object' && parsed.output && typeof parsed.output === 'string') {
+                return parsed.output;
+              }
+              // If it's just a string in JSON, return it
+              if (typeof parsed === 'string') {
+                return parsed;
+              }
+            } catch (e) {
+              // Not valid JSON, return as-is
+            }
+          }
+          return text;
+        };
+        
+        answer = extractReadableText(rawAnswer);
         if (answer) {
           ack = answer;
           logger.info('✅ Built answer from summary', { answerLength: answer.length });
@@ -61,6 +98,23 @@ export default class ResponseBuilder {
         timeout: agentResults.timeout, 
         error: agentResults.error 
       });
+    }
+    
+    // Generate conversational response using OpenAI if available
+    try {
+      conversationalResponse = await this.generateConversationalResponse({
+        query,
+        intent,
+        templates,
+        memoryContext,
+        agentResults,
+        rawAnswer: answer || ack
+      });
+    } catch (error) {
+      logger.warn('⚠️ Failed to generate conversational response, using fallback', { 
+        error: error.message 
+      });
+      conversationalResponse = answer || ack;
     }
     
     // Build declarative plan (what needs to be done)
@@ -119,8 +173,8 @@ export default class ResponseBuilder {
     return {
       query,
       intentClassification: intent,
-      conversationalResponse: answer || this.buildConversationalResponse(ack, templates),
-      response: answer || this.buildConversationalResponse(ack, templates),
+      conversationalResponse: conversationalResponse || answer || ack,
+      response: conversationalResponse || answer || ack,
       turnEnvelope,
       agentResults: agentResults ? {
         agents: agentResults.agents || [],
@@ -134,8 +188,223 @@ export default class ResponseBuilder {
       processedAt: new Date().toISOString(),
       requestId,
       conversationId,
-      templates: templates.map(t => ({ id: t.id, name: t.name, relevance: t.relevance }))
+      templates: templates.map(t => ({ 
+        id: t.id, 
+        name: t.name, 
+        relevance: t.relevance,
+        relevanceBreakdown: t.relevanceBreakdown || null
+      }))
     };
+  }
+
+  /**
+   * Generate conversational response using OpenAI
+   * Creates ChatGPT-like natural language responses with conversation context
+   */
+  async generateConversationalResponse({ query, intent, templates, memoryContext, agentResults, rawAnswer }) {
+    // If OpenAI is not available, return raw answer
+    if (!this.openai) {
+      logger.debug('OpenAI not available, using raw answer');
+      return rawAnswer;
+    }
+
+    try {
+      // Format conversation history for context
+      const conversationHistory = this.formatConversationHistory(memoryContext);
+      
+      // Format agent results for context
+      const agentResultsText = this.formatAgentResults(agentResults);
+      
+      // Build system prompt
+      const systemPrompt = `You are a helpful business intelligence assistant. You provide clear, conversational responses to user queries based on data analysis and insights.
+
+Your responses should:
+- Be natural and conversational, like ChatGPT
+- Reference previous conversation context when relevant
+- Incorporate insights from data analysis naturally
+- Be concise but informative
+- Use a friendly, professional tone
+- If agent results are provided, incorporate them naturally into your response
+- If no agent results are available yet, acknowledge the query and explain what you're doing`;
+
+      // Build user message with context
+      const userMessage = this.buildConversationalPrompt({
+        query,
+        intent,
+        templates,
+        conversationHistory,
+        agentResultsText,
+        rawAnswer
+      });
+
+      logger.info('🤖 Generating conversational response with OpenAI', {
+        hasHistory: conversationHistory.length > 0,
+        hasAgentResults: !!agentResultsText,
+        model: config.openai.model
+      });
+
+      // Call OpenAI API
+      const completion = await this.openai.chat.completions.create({
+        model: config.openai.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...conversationHistory,
+          { role: 'user', content: userMessage }
+        ],
+        temperature: config.openai.temperature,
+        max_tokens: config.openai.maxTokens
+      });
+
+      const response = completion.choices[0]?.message?.content?.trim();
+      
+      if (response) {
+        logger.info('✅ Generated conversational response', { 
+          length: response.length 
+        });
+        return response;
+      } else {
+        logger.warn('⚠️ OpenAI returned empty response');
+        return rawAnswer;
+      }
+    } catch (error) {
+      logger.error('❌ Error generating conversational response', {
+        error: error.message,
+        stack: error.stack
+      });
+      // Fallback to raw answer on error
+      return rawAnswer;
+    }
+  }
+
+  /**
+   * Format conversation history for OpenAI messages
+   */
+  formatConversationHistory(memoryContext) {
+    const messages = [];
+    
+    // Get conversation history from memory context
+    const history = memoryContext.conversationHistory || [];
+    const workingMemory = memoryContext.workingMemory || [];
+    
+    // Combine and sort by timestamp
+    const allTurns = [
+      ...history.map(h => ({
+        query: h.message || h.query,
+        response: h.response ? (typeof h.response === 'string' ? JSON.parse(h.response) : h.response) : null,
+        timestamp: h.created_at || h.timestamp
+      })),
+      ...workingMemory.map(w => ({
+        query: w.query,
+        response: w.agentResults,
+        timestamp: w.timestamp
+      }))
+    ].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    // Format last 10 turns as conversation context
+    const recentTurns = allTurns.slice(-10);
+    
+    for (const turn of recentTurns) {
+      if (turn.query) {
+        messages.push({ role: 'user', content: turn.query });
+      }
+      if (turn.response) {
+        // Extract response text from agent results
+        const responseText = this.extractResponseText(turn.response);
+        if (responseText) {
+          messages.push({ role: 'assistant', content: responseText });
+        }
+      }
+    }
+    
+    return messages;
+  }
+
+  /**
+   * Extract readable text from agent results or response object
+   */
+  extractResponseText(response) {
+    if (!response) return null;
+    
+    if (typeof response === 'string') {
+      try {
+        const parsed = JSON.parse(response);
+        return this.extractResponseText(parsed);
+      } catch {
+        return response;
+      }
+    }
+    
+    if (typeof response === 'object') {
+      // Try common fields
+      return response.synthesizedAnswer || 
+             response.answer || 
+             response.summary ||
+             response.output ||
+             response.ack ||
+             null;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Format agent results for inclusion in prompt
+   */
+  formatAgentResults(agentResults) {
+    if (!agentResults || agentResults.timeout || agentResults.error) {
+      return null;
+    }
+
+    const parts = [];
+    
+    if (agentResults.summary?.synthesizedAnswer) {
+      parts.push(`Analysis Results:\n${agentResults.summary.synthesizedAnswer}`);
+    } else if (agentResults.summary) {
+      parts.push(`Summary: ${JSON.stringify(agentResults.summary, null, 2)}`);
+    }
+    
+    if (agentResults.results && agentResults.results.length > 0) {
+      const successfulResults = agentResults.results.filter(r => r.success);
+      if (successfulResults.length > 0) {
+        parts.push(`\nAgent Outputs:\n${successfulResults.map((r, i) => 
+          `${i + 1}. ${r.agentName || r.agentId}: ${r.result?.output || r.result?.answer || 'Completed'}`
+        ).join('\n')}`);
+      }
+    }
+    
+    return parts.length > 0 ? parts.join('\n\n') : null;
+  }
+
+  /**
+   * Build conversational prompt for OpenAI
+   */
+  buildConversationalPrompt({ query, intent, templates, conversationHistory, agentResultsText, rawAnswer }) {
+    const parts = [];
+    
+    parts.push(`User Query: ${query}`);
+    parts.push(`Intent: ${intent.intent} (confidence: ${(intent.confidence * 100).toFixed(0)}%)`);
+    
+    if (templates.length > 0) {
+      parts.push(`\nRelevant Workflows: ${templates.map(t => t.name).join(', ')}`);
+    }
+    
+    if (agentResultsText) {
+      parts.push(`\n${agentResultsText}`);
+    } else if (rawAnswer) {
+      parts.push(`\nCurrent Response: ${rawAnswer}`);
+    }
+    
+    parts.push(`\nPlease provide a natural, conversational response that:`);
+    parts.push(`- Directly addresses the user's query`);
+    if (conversationHistory.length > 0) {
+      parts.push(`- References previous conversation context naturally`);
+    }
+    if (agentResultsText) {
+      parts.push(`- Incorporates the analysis results in a clear, understandable way`);
+    }
+    parts.push(`- Maintains a helpful, professional tone`);
+    
+    return parts.join('\n');
   }
 
   /**
@@ -234,7 +503,12 @@ export default class ResponseBuilder {
       processedAt: new Date().toISOString(),
       requestId,
       conversationId,
-      templates: templates.map(t => ({ id: t.id, name: t.name, relevance: t.relevance }))
+      templates: templates.map(t => ({ 
+        id: t.id, 
+        name: t.name, 
+        relevance: t.relevance,
+        relevanceBreakdown: t.relevanceBreakdown || null
+      }))
     };
   }
 
@@ -329,7 +603,7 @@ export default class ResponseBuilder {
     const formatted = `\`\`\`json
 {
   "acknowledgment": "${ack}",
-  "templates": ${JSON.stringify(templates.map(t => ({ name: t.name, relevance: t.relevance })), null, 2)},
+  "templates": ${JSON.stringify(templates.map(t => ({ name: t.name, relevance: t.relevance, relevanceBreakdown: t.relevanceBreakdown || null })), null, 2)},
   "status": "processing"
 }
 \`\`\``;
