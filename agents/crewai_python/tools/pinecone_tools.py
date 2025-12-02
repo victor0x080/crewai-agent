@@ -340,6 +340,65 @@ def search_agent_knowledge(
         }
 
 
+def search_agent_knowledge_direct(
+    query: str,
+    agent_id: Optional[str] = None,
+    top_k: int = 5
+) -> Dict[str, Any]:
+    """
+    Helper function (non-decorated) to search for similar past agent executions in Pinecone.
+    Mirrors the logic of the @tool-decorated search_agent_knowledge but safe to call directly.
+    """
+    if not PINECONE_API_KEY or not PINECONE_HOST:
+        return {
+            'results': [],
+            'count': 0,
+            'message': 'Pinecone not configured'
+        }
+    
+    try:
+        # Generate embedding for query
+        query_embedding = _generate_embedding(query)
+        
+        # Build filter if agent_id specified
+        filter_dict = None
+        if agent_id:
+            filter_dict = {
+                'agent_id': {'$eq': agent_id},
+                'type': {'$eq': 'agent_result'}
+            }
+        else:
+            filter_dict = {'type': {'$eq': 'agent_result'}}
+        
+        # Query Pinecone
+        matches = _query_pinecone(query_embedding, top_k=top_k, filter_dict=filter_dict)
+        
+        # Format results
+        results = []
+        for match in matches:
+            metadata = match.get('metadata', {})
+            results.append({
+                'task_description': metadata.get('task_description', ''),
+                'result': metadata.get('result', ''),
+                'agent_id': metadata.get('agent_id', ''),
+                'timestamp': metadata.get('timestamp', ''),
+                'score': match.get('score', 0.0),
+                'metadata': {k: v for k, v in metadata.items() 
+                            if k not in ['task_description', 'result', 'agent_id', 'timestamp', 'type']}
+            })
+        
+        return {
+            'results': results,
+            'count': len(results),
+            'message': f'Found {len(results)} similar past executions'
+        }
+    except Exception as e:
+        return {
+            'results': [],
+            'count': 0,
+            'message': f'Error searching knowledge: {str(e)}'
+        }
+
 @tool("store_conversation_context")
 def store_conversation_context(
     conversation_id: str,
@@ -519,12 +578,18 @@ def get_conversation_history(
         messages = []
         for match in matches:
             metadata = match.get('metadata', {})
+            # Include core fields plus any additional metadata (e.g., user_role)
+            extra_metadata = {
+                k: v for k, v in metadata.items()
+                if k not in ['user_query', 'agent_response', 'agent_id', 'timestamp', 'type']
+            }
             messages.append({
                 'user_query': metadata.get('user_query', ''),
                 'agent_response': metadata.get('agent_response', ''),
                 'agent_id': metadata.get('agent_id', ''),
                 'timestamp': metadata.get('timestamp', ''),
-                'score': match.get('score', 0.0) if query else None
+                'score': match.get('score', 0.0) if query else None,
+                'metadata': extra_metadata if extra_metadata else None
             })
         
         # Sort by timestamp if no query (chronological order)

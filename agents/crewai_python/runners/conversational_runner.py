@@ -62,7 +62,7 @@ except Exception as e:
 
 from agents.conversational_agent import get_conversational_agent
 from tools.redis_streams_tools import consume_stream, ack_message, nack_to_dlq, publish_cloudevent_raw as publish_cloudevent
-from tools.pinecone_tools import save_conversation_context, get_conversation_history
+from tools.pinecone_tools import save_conversation_context
 from base_runner import AgentRunner
 
 
@@ -133,35 +133,22 @@ class ConversationalRunner(AgentRunner):
             conversation_id = inputs.get('conversation_id', f"conv_{int(time.time())}")
             user_query = inputs.get('query') or inputs.get('message') or task_description
             context = inputs.get('context', {})
+            conversation_history = inputs.get('conversation_history', [])  # Pre-retrieved from MemoryService
+            
+            # Extract problem-first context
+            problem_type = context.get('problem_type', 'general')
+            problem_space = context.get('problem_space', '')
+            workflow_stage = context.get('workflow_stage', 'interpret')
+            problem_classification = context.get('problem_classification', {})
+            datasource = context.get('datasource', None)
             
             self.logger.info(f"💬 Conversation ID: {conversation_id}, Query: {user_query[:50]}...")
+            self.logger.info(f"🎯 Problem Type: {problem_type}, Workflow Stage: {workflow_stage}, Problem Space: {problem_space[:50] if problem_space else 'Not defined'}...")
+            self.logger.info(f"📊 Datasource Available: {'Yes' if datasource else 'No'}")
+            self.logger.info(f"📚 Conversation history: {len(conversation_history)} messages pre-loaded from MemoryService")
             
-            # Retrieve conversation history BEFORE agent runs so it can use it
-            retrieved_history = []
-            try:
-                self.logger.info(f"🔍 Retrieving conversation history from Pinecone BEFORE agent execution...")
-                history_result = get_conversation_history(
-                    conversation_id=conversation_id,
-                    query=None,
-                    top_k=10
-                )
-                if isinstance(history_result, dict):
-                    retrieved_history = history_result.get('messages', [])
-                    history_count = history_result.get('count', 0)
-                    self.logger.info(f"📚 Retrieved {history_count} previous messages from Pinecone")
-                    if retrieved_history:
-                        # Format history for inclusion in task
-                        history_summary = "\n\nPrevious conversation history:\n"
-                        for msg in retrieved_history[-5:]:  # Last 5 messages
-                            history_summary += f"- User: {msg.get('user_query', '')[:100]}\n"
-                            history_summary += f"  Assistant: {msg.get('agent_response', '')[:100]}\n"
-                    else:
-                        history_summary = "\n\nNo previous conversation history found."
-                else:
-                    history_summary = "\n\nNo previous conversation history found."
-            except Exception as hist_error:
-                self.logger.warning(f"⚠️ Failed to retrieve history before execution: {hist_error}")
-                history_summary = "\n\nNo previous conversation history found."
+            # Note: Conversation history is pre-retrieved by MemoryService.js and passed here
+            # No need for agent to call retrieve_conversation_history tool
             
             # Rate limiting check
             estimated_tokens = max(len(user_query) // 4, 0) + 1000  # Estimate tokens for function calling
@@ -182,14 +169,8 @@ class ConversationalRunner(AgentRunner):
                 ack_message(self.input_stream, self.group, mid)
                 return
             
-            # Format conversation history for the agent
-            formatted_history = []
-            if retrieved_history:
-                for msg in retrieved_history:
-                    formatted_history.append({
-                        'user_query': msg.get('user_query', ''),
-                        'agent_response': msg.get('agent_response', '')
-                    })
+            # Conversation history is pre-loaded from MemoryService (handles Pinecone retrieval)
+            # No need for agent to call retrieve_conversation_history tool
             
             self.logger.info(f"🚀 Starting OpenAI function calling conversational execution...")
             start_time = time.time()
@@ -200,11 +181,21 @@ class ConversationalRunner(AgentRunner):
             
             def execute_with_timeout():
                 try:
+                    # Build enhanced context with problem-first information
+                    enhanced_context = {
+                        **context,
+                        'problem_type': problem_type,
+                        'problem_space': problem_space,
+                        'workflow_stage': workflow_stage,
+                        'problem_classification': problem_classification,
+                        'datasource': datasource  # Include datasource from datacube
+                    }
+                    
                     result = self.agent.generate_response(
                         user_query=user_query,
                         conversation_id=conversation_id,
-                        conversation_history=formatted_history,
-                        context=context
+                        conversation_history=conversation_history,  # Use pre-retrieved history from MemoryService
+                        context=enhanced_context
                     )
                     exception_holder[0] = result
                 except Exception as e:
@@ -281,45 +272,11 @@ class ConversationalRunner(AgentRunner):
             else:
                 self.logger.debug(f"📝 Full response: {result}")
             
-            # Save conversation to Pinecone (guaranteed save, not relying on agent tool call)
-            self.logger.info(f"💾 Saving conversation to Pinecone...")
-            try:
-                save_result = save_conversation_context(
-                    conversation_id=conversation_id,
-                    agent_id="conversational_agent",
-                    user_query=user_query,
-                    agent_response=result,
-                    context=context
-                )
-                if save_result.get('stored'):
-                    self.logger.info(f"✅ Conversation saved to Pinecone: {save_result.get('vector_id', 'unknown')}")
-                else:
-                    self.logger.warning(f"⚠️ Failed to save conversation: {save_result.get('message', 'unknown error')}")
-            except Exception as save_error:
-                self.logger.error(f"❌ Error saving conversation to Pinecone: {save_error}", exc_info=True)
+            # Note: Conversation history is pre-loaded from MemoryService.js (handles Pinecone retrieval)
+            # All memory operations are handled server-side by MemoryService.js
+            history_length = len(conversation_history) if conversation_history else 0
             
-            # Retrieve conversation history from Pinecone to show what memory was used
-            memory_data = None
-            history_length = 0
-            try:
-                self.logger.info(f"🔍 Retrieving conversation history from Pinecone for memory context...")
-                history_result = get_conversation_history(
-                    conversation_id=conversation_id,
-                    query=None,  # Get all messages for this conversation
-                    top_k=10
-                )
-                
-                if isinstance(history_result, dict):
-                    memory_data = history_result.get('messages', [])
-                    history_length = history_result.get('count', 0)
-                    self.logger.info(f"📚 Retrieved {history_length} conversation messages from Pinecone")
-                else:
-                    self.logger.warning(f"⚠️ Unexpected history result format: {type(history_result)}")
-            except Exception as mem_error:
-                self.logger.warning(f"⚠️ Failed to retrieve memory context: {mem_error}")
-                memory_data = []
-            
-            # Publish success response with memory data and function calls (Cursor/Windsurf style)
+            # Publish success response (no function calls - all operations handled by MemoryService.js)
             publish_cloudevent(
                 self.output_stream,
                 self.output_type,
@@ -331,10 +288,14 @@ class ConversationalRunner(AgentRunner):
                     "status": "success",
                     "conversation_id": conversation_id,
                     "processing_time": elapsed,
-                    "history_length": history_length,
-                    "memory": memory_data if memory_data else [],  # Include the actual memory data
-                    "function_calls": function_calls,  # Include function calls (Cursor/Windsurf style)
-                    "metadata": metadata  # Include metadata about the execution
+                    "history_length": history_length,  # Actual conversation history length from MemoryService
+                    "function_calls": function_calls,  # Empty - no function calling needed
+                    "metadata": {
+                        **(metadata if metadata else {}),
+                        "problem_type": problem_type,
+                        "workflow_stage": workflow_stage,
+                        "problem_space": problem_space
+                    }  # Include metadata about the execution and problem context
                 }
             )
             

@@ -1,38 +1,60 @@
 /**
  * Memory Service
- * Manages hierarchical memory (working, short-term, long-term)
+ * Manages conversation history retrieval from Pinecone using semantic search
  */
 
-import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
+import axios from 'axios';
 import config from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
 export default class MemoryService {
   constructor() {
-    this.supabase = null;
     this.healthy = false;
     this.workingMemory = new Map(); // In-process cache
+    this.openaiClient = null; // OpenAI client for embeddings
+    this.pineconeHost = null;
+    this.pineconeNamespace = 'crewai-agents'; // Default namespace for CrewAI conversations
+    this.embeddingDimension = 1024; // Default dimension
+    this.embeddingModel = 'text-embedding-3-large'; // Default model
   }
 
   async initialize() {
-    if (!config.supabase.enabled) {
-      logger.warn('Supabase not configured, MemoryService will use in-memory only');
-      this.healthy = true; // Still healthy, just limited
-      return;
+    // Initialize Pinecone for semantic search if configured
+    if (config.pinecone?.enabled && config.pinecone?.apiKey && (config.pinecone?.host || config.pinecone?.indexName)) {
+      try {
+        this.pineconeHost = (config.pinecone.host || '').replace(/\/$/, '');
+        this.pineconeNamespace = config.pinecone.namespace || 'crewai-agents';
+        this.embeddingDimension = config.pinecone.dimension || 1024;
+        this.embeddingModel = config.pinecone.embeddingModel || 'text-embedding-3-large';
+
+        if (!this.pineconeHost && config.pinecone.indexName && config.pinecone.environment) {
+          // Construct host from index + environment if not provided
+          this.pineconeHost = `https://${config.pinecone.indexName}.svc.${config.pinecone.environment}.pinecone.io`;
     }
 
-    try {
-      this.supabase = createClient(
-        config.supabase.url,
-        config.supabase.serviceRoleKey || config.supabase.anonKey
-      );
+        if (!this.pineconeHost) {
+          logger.warn('⚠️ Pinecone host not configured');
+        } else {
+          // Initialize OpenAI client for embeddings
+          if (config.openai?.enabled && config.openai?.apiKey) {
+            this.openaiClient = new OpenAI({ apiKey: config.openai.apiKey });
+            logger.info('✅ MemoryService Pinecone initialized', {
+              host: this.pineconeHost,
+              namespace: this.pineconeNamespace,
+              dimension: this.embeddingDimension
+            });
+          } else {
+            logger.warn('⚠️ OpenAI not configured, Pinecone semantic search will not work');
+          }
+        }
+      } catch (error) {
+        logger.error('❌ MemoryService Pinecone initialization failed', { error: error.message });
+      }
+    }
       
       this.healthy = true;
       logger.info('✅ MemoryService initialized');
-    } catch (error) {
-      logger.error('❌ MemoryService initialization failed', { error: error.message });
-      this.healthy = false;
-    }
   }
 
   isHealthy() {
@@ -40,257 +62,229 @@ export default class MemoryService {
   }
 
   /**
-   * Get context for a conversation
+   * Get conversation history for a conversation ID
+   * Returns a simplified format for problem type classification
+   * If query is provided, uses semantic search to retrieve top relevant messages from Pinecone
    * @param {string} conversationId
-   * @param {string} userId
-   * @param {object} params - Query parameters (query, intent, etc.)
-   * @returns {Promise<object>} Memory context
+   * @param {number} limit
+   * @param {string} query - Optional query for semantic search
+   * @returns {Promise<Array>} Array of conversation messages
    */
-  async getContext(conversationId, userId, params = {}) {
-    const context = {
-      workingMemory: [],
-      shortTermMemory: [],
-      longTermMemory: [],
-      conversationHistory: []
-    };
-
-    // Check working memory (in-process cache)
-    const cached = this.workingMemory.get(conversationId);
-    if (cached) {
-      context.workingMemory = cached.items || [];
+  async getConversationHistory(conversationId, limit = 10, query = null) {
+    if (!conversationId) {
+      return [];
     }
 
-    // Retrieve from Supabase if available
-    if (this.supabase) {
+    // Use Pinecone semantic search if query is provided and Pinecone is configured
+    if (query && this.pineconeHost && config.pinecone?.apiKey && this.openaiClient) {
       try {
-        // Get conversation history by user_id (since id is primary key, we get all user conversations)
-        // Filter to get recent conversations for context
-        const { data: conversations } = await this.supabase
-          .from('conversations')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20); // Get more to have better context
+        // Generate embedding for the query
+        const queryEmbedding = await this._generateEmbedding(query);
+        
+        // Query Pinecone with semantic search
+        const url = `${this.pineconeHost}/query`;
+        const payload = {
+          vector: queryEmbedding,
+          topK: limit * 2, // Get more results, then filter
+          includeMetadata: true,
+          namespace: this.pineconeNamespace,
+          filter: {
+            conversation_id: { $eq: conversationId },
+            type: { $eq: 'conversation_context' }
+          }
+        };
+        const headers = {
+          'Content-Type': 'application/json',
+          'Api-Key': config.pinecone.apiKey
+        };
 
-        if (conversations && conversations.length > 0) {
-          // Sort by created_at ascending for chronological order
-          context.conversationHistory = conversations.sort((a, b) => 
-            new Date(a.created_at) - new Date(b.created_at)
-          );
+        const { data } = await axios.post(url, payload, { headers });
+        const matches = data.matches || [];
+
+        // Format messages from Pinecone results
+        const messages = matches
+          .map(match => {
+            const metadata = match.metadata || {};
+            const userQuery = metadata.user_query || '';
+            const agentResponse = metadata.agent_response || '';
+            const timestamp = metadata.timestamp || '';
+
+            if (!userQuery && !agentResponse) {
+              return null;
         }
 
-        // Get relevant memories (if knowledge_base table exists)
-        // Get short-term memories (most recent 10)
-        const { data: shortTermMemories, error: shortTermError } = await this.supabase
-          .from('knowledge_base')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('memory_type', 'short_term')
-          .order('created_at', { ascending: false })
-          .limit(10);
+            // Extract workflowStage - handle both snake_case (from Python) and camelCase
+            // Python stores as 'workflow_stage' in Pinecone metadata, but we also check for 'workflowStage'
+            const workflowStage = metadata.workflow_stage || metadata.workflowStage || null;
 
-        if (shortTermError) {
-          logger.warn('Failed to retrieve short-term memories', { 
-            error: shortTermError.message 
+            // Format for both problem type classifier and conversational agent
+            // Agent expects: user_query and agent_response fields
+            // Problem classifier expects: content field (for backward compatibility)
+            return {
+              // For conversational agent (primary format)
+              user_query: userQuery,
+              agent_response: agentResponse,
+              // For problem type classifier (backward compatibility)
+              role: 'user',
+              content: userQuery,
+              timestamp: timestamp,
+              score: match.score || 0.0, // Relevance score from semantic search
+              workflowStage: workflowStage, // Set at top level for easy access
+              metadata: {
+                agent_id: metadata.agent_id || null,
+                workflowStage: workflowStage, // Also in metadata for compatibility
+                // Include any other extra metadata fields
+                ...Object.fromEntries(
+                  Object.entries(metadata).filter(([key]) => 
+                    !['user_query', 'agent_response', 'agent_id', 'timestamp', 'type', 
+                      'conversation_id', 'workflow_stage', 'workflowStage'].includes(key)
+                  )
+                )
+              }
+            };
+          })
+          .filter(Boolean)
+          .slice(0, limit); // Take top K most relevant
+
+        if (messages.length > 0) {
+          logger.info('✅ Retrieved relevant conversation history from Pinecone', {
+            conversationId,
+            count: messages.length,
+            query: query.substring(0, 50) + '...'
           });
-        } else if (shortTermMemories && shortTermMemories.length > 0) {
-          context.shortTermMemory = shortTermMemories;
+          return messages;
         }
-
-        // Get long-term memories (most recent 20)
-        const { data: longTermMemories, error: longTermError } = await this.supabase
-          .from('knowledge_base')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('memory_type', 'long_term')
-          .order('created_at', { ascending: false })
-          .limit(20);
-
-        if (longTermError) {
-          logger.warn('Failed to retrieve long-term memories', { 
-            error: longTermError.message 
-          });
-        } else if (longTermMemories && longTermMemories.length > 0) {
-          context.longTermMemory = longTermMemories;
-        }
-
       } catch (error) {
-        logger.warn('Memory retrieval error', { error: error.message });
+        logger.warn('⚠️ Failed to retrieve conversation history from Pinecone, falling back', {
+          error: error.message,
+          conversationId
+        });
       }
     }
 
-    return context;
+    // Fallback: return empty array if Pinecone is not available or query is not provided
+    // The actual conversation history is retrieved by the conversational agent via Pinecone
+    return [];
+    }
+    
+  /**
+   * Generate embedding using OpenAI API
+   * @private
+   */
+  async _generateEmbedding(text) {
+    if (!this.openaiClient) {
+      throw new Error('OpenAI client not initialized');
+    }
+
+    try {
+      const response = await this.openaiClient.embeddings.create({
+        model: this.embeddingModel,
+        input: text,
+        dimensions: this.embeddingDimension,
+      });
+
+      return response.data[0].embedding;
+    } catch (error) {
+      logger.error('❌ Failed to generate embedding', {
+        error: error.message,
+        model: this.embeddingModel,
+        dimensions: this.embeddingDimension
+      });
+      throw error;
+    }
   }
 
   /**
-   * Store execution results in memory
+   * Store conversation context to Pinecone
+   * @param {string} conversationId - Conversation identifier
+   * @param {string} agentId - Agent identifier
+   * @param {string} userQuery - User's query
+   * @param {string} agentResponse - Agent's response
+   * @param {object} context - Optional additional context (problem_type, workflow_stage, etc.)
+   * @returns {Promise<object>} Result with stored status and vector_id
    */
-  async storeExecution(data) {
-    const { conversationId, userId, query, intent, agentResults } = data;
-
-    logger.info('💾 Storing execution in memory', {
-      conversationId,
-      userId,
-      hasAgentResults: !!agentResults,
-      hasSummary: !!agentResults?.summary
-    });
-
-    // Store in working memory cache
-    const existing = this.workingMemory.get(conversationId) || { items: [] };
-    existing.items.push({
-      query,
-      intent,
-      agentResults: agentResults?.summary || {},
-      timestamp: new Date().toISOString()
-    });
-    
-    // Keep only last 10 items in working memory
-    if (existing.items.length > 10) {
-      existing.items = existing.items.slice(-10);
-    }
-    
-    this.workingMemory.set(conversationId, existing);
-
-    // Store in Supabase if available
-    if (!this.supabase) {
-      logger.warn('⚠️ Supabase not available, skipping persistent memory storage');
-      return;
-    }
-    
-    if (!this.healthy) {
-      logger.warn('⚠️ MemoryService not healthy, skipping persistent memory storage');
-      return;
-    }
-
-    // Store conversation history
-    // Generate unique ID for each conversation turn (conversationId + timestamp)
-    try {
-      const turnId = `${conversationId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const { error: convError } = await this.supabase
-        .from('conversations')
-        .insert({
-          id: turnId,
-          user_id: userId,
-          message: query,
-          intent: intent?.intent || 'GENERAL',
-          response: agentResults?.summary ? JSON.stringify(agentResults.summary) : null,
-          created_at: new Date().toISOString()
-        });
-
-      if (convError) {
-        logger.warn('Failed to store conversation in Supabase', { 
-          error: convError.message,
-          code: convError.code,
-          details: convError.details
-        });
-      } else {
-        logger.info('✅ Conversation stored in Supabase', { conversationId });
-      }
-    } catch (error) {
-      logger.warn('Failed to store execution in Supabase', { error: error.message });
-    }
-
-    // ALWAYS store short-term memory first, then promote if needed
-    try {
-      // Extract synthesized answer or agent outputs
-      const synthesized =
-        agentResults?.summary?.synthesizedAnswer ||
-        agentResults?.summary?.outputs?.map?.((o) => o?.output)?.filter(Boolean)?.join('\n\n') ||
-        agentResults?.results?.map?.((r) => r?.result?.output)?.filter(Boolean)?.join('\n\n') ||
-        query;
-
-      // ALWAYS store as short-term memory first (for every query)
-      const shortTermMetadata = {
-        conversationId,
-        query,
-        intent: intent?.intent || 'GENERAL',
-        agentsInvolved: agentResults?.summary?.agentsInvolved ?? agentResults?.agents?.length ?? 0,
-        successCount: agentResults?.summary?.successCount ?? 0,
-        failureCount: agentResults?.summary?.failureCount ?? 0,
-        timestamp: new Date().toISOString()
-      };
-
-      // Store short-term memory
-      const { error: shortTermError, data: shortTermData } = await this.supabase
-        .from('knowledge_base')
-        .insert({
-          user_id: userId,
-          conversation_id: conversationId,
-          memory_type: 'short_term',
-          content: synthesized || query,
-          metadata: shortTermMetadata
-        })
-        .select();
-
-      if (shortTermError) {
-        logger.error('❌ Failed to persist short-term memory to knowledge_base', { 
-          error: shortTermError.message,
-          code: shortTermError.code,
-          details: shortTermError.details,
-          hint: shortTermError.hint,
-          userId,
-          conversationId
-        });
-      } else {
-        logger.info('✅ Short-term memory persisted to knowledge_base', { 
-          id: shortTermData?.[0]?.id,
-          userId,
-          conversationId
-        });
-      }
-
-      // Determine if this should ALSO be promoted to long-term memory
-      // Criteria: High success rate, multiple agents involved, or important intent
-      const shouldPromoteToLongTerm = 
-        (agentResults?.summary?.successCount ?? 0) > 0 &&
-        ((agentResults?.summary?.agentsInvolved ?? (agentResults?.agents?.length ?? 0)) >= 2 || 
-         intent?.intent === 'DECISION' || 
-         intent?.intent === 'ANALYSIS');
-
-      if (!shouldPromoteToLongTerm) {
-        return; // Only short-term stored, we're done
-      }
-
-      // Also store as long-term memory if criteria met
-      const longTermMetadata = {
-        ...shortTermMetadata,
-        promotedAt: new Date().toISOString(),
-        reason: 'High success rate or important intent'
-      };
-
-      const { error: longTermError, data: longTermData } = await this.supabase
-        .from('knowledge_base')
-        .insert({
-          user_id: userId,
-          conversation_id: conversationId,
-          memory_type: 'long_term',
-          content: synthesized || query,
-          metadata: longTermMetadata
-        })
-        .select();
-
-      if (longTermError) {
-        logger.error('❌ Failed to persist long-term memory to knowledge_base', { 
-          error: longTermError.message,
-          code: longTermError.code,
-          details: longTermError.details,
-          hint: longTermError.hint,
-          userId,
-          conversationId
-        });
-      } else {
-        logger.info('🧠 Long-term memory persisted to knowledge_base', { 
-          id: longTermData?.[0]?.id,
-          userId,
-          conversationId
-        });
-      }
-    } catch (error) {
-      logger.error('Exception while persisting memory', { 
-        error: error.message,
-        stack: error.stack 
+  async storeConversationContext(conversationId, agentId, userQuery, agentResponse, context = {}) {
+    if (!conversationId || !userQuery || !agentResponse) {
+      logger.warn('⚠️ Missing required parameters for storing conversation context', {
+        hasConversationId: !!conversationId,
+        hasUserQuery: !!userQuery,
+        hasAgentResponse: !!agentResponse
       });
+      return {
+        stored: false,
+        message: 'Missing required parameters'
+      };
     }
+
+    // Use Pinecone if configured
+    if (this.pineconeHost && config.pinecone?.apiKey && this.openaiClient) {
+      try {
+        // Combine query and response for embedding (same format as Python)
+        const textToEmbed = `Query: ${userQuery}\n\nResponse: ${agentResponse}`;
+        const embedding = await this._generateEmbedding(textToEmbed);
+        
+        // Generate unique vector ID (same format as Python)
+        const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '');
+        const vectorId = `conv:${conversationId}:${agentId || 'conversational_agent'}:${timestamp}`;
+        
+        // Prepare metadata (same format as Python)
+        const vectorMetadata = {
+          conversation_id: conversationId,
+          agent_id: agentId || 'conversational_agent',
+          user_query: userQuery,
+          agent_response: agentResponse,
+          timestamp: new Date().toISOString(),
+          type: 'conversation_context',
+          ...context // Include any additional context (problem_type, workflow_stage, etc.)
+        };
+        
+        // Store in Pinecone
+        const url = `${this.pineconeHost}/vectors/upsert`;
+        const payload = {
+          namespace: this.pineconeNamespace,
+          vectors: [{
+            id: vectorId,
+            values: embedding,
+            metadata: vectorMetadata
+          }]
+        };
+        const headers = {
+          'Content-Type': 'application/json',
+          'Api-Key': config.pinecone.apiKey
+        };
+
+        await axios.post(url, payload, { headers });
+        
+        logger.info('✅ Conversation context stored in Pinecone', {
+          conversationId,
+          agentId: agentId || 'conversational_agent',
+          vectorId
+        });
+        
+        return {
+          stored: true,
+          vector_id: vectorId,
+          message: `Conversation context saved (ID: ${vectorId})`
+        };
+      } catch (error) {
+        logger.error('❌ Failed to store conversation context in Pinecone', {
+          error: error.message,
+          conversationId,
+          agentId
+        });
+        return {
+          stored: false,
+          message: `Error saving context: ${error.message}`
+        };
+      }
+    }
+
+    // Fallback if Pinecone not configured
+    logger.warn('⚠️ Pinecone not configured, cannot store conversation context');
+    return {
+      stored: false,
+      message: 'Pinecone not configured'
+    };
   }
 
   /**
@@ -298,51 +292,6 @@ export default class MemoryService {
    */
   clearWorkingMemory(conversationId) {
     this.workingMemory.delete(conversationId);
-  }
-
-  /**
-   * Cleanup old short-term memories (keep only last 50 per user)
-   * This should be called periodically or on demand
-   */
-  async cleanupOldShortTermMemories(userId, keepCount = 50) {
-    if (!this.supabase) {
-      return;
-    }
-
-    try {
-      // Get all short-term memories for user, ordered by date
-      const { data: allMemories } = await this.supabase
-        .from('knowledge_base')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('memory_type', 'short_term')
-        .order('created_at', { ascending: false });
-
-      if (allMemories && allMemories.length > keepCount) {
-        // Get IDs to delete (everything after keepCount)
-        const idsToDelete = allMemories.slice(keepCount).map(m => m.id);
-
-        if (idsToDelete.length > 0) {
-          const { error } = await this.supabase
-            .from('knowledge_base')
-            .delete()
-            .in('id', idsToDelete);
-
-          if (error) {
-            logger.warn('Failed to cleanup old short-term memories', { 
-              error: error.message 
-            });
-          } else {
-            logger.info('🧹 Cleaned up old short-term memories', { 
-              deleted: idsToDelete.length,
-              userId 
-            });
-          }
-        }
-      }
-    } catch (error) {
-      logger.warn('Exception during memory cleanup', { error: error.message });
-    }
   }
 }
 

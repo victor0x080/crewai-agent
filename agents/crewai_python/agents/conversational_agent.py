@@ -1,32 +1,27 @@
 """
-Conversational CrewAI Agent with Pinecone Memory and OpenAI Function Calling
-============================================================================
+Conversational CrewAI Agent
+===========================
 
-A conversational AI agent that uses Pinecone for persistent memory.
-Uses OpenAI function calling for structured responses (Cursor/Windsurf style).
+A conversational AI agent that uses OpenAI for generating responses.
+All Pinecone memory operations (retrieval and storage) are handled by MemoryService.js.
+Conversation history is pre-loaded and passed to the agent.
 """
 
 import os
 import sys
-import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from tools.pinecone_tools import (
-    retrieve_conversation_history,
-    store_conversation_context,
-    search_agent_knowledge,
-    get_conversation_history,
-    save_conversation_context
-)
+# Pinecone operations are handled by MemoryService.js - no need to import Pinecone tools
 
 
 class ConversationalAgentWithFunctionCalling:
     """
-    Conversational agent that uses OpenAI function calling for structured responses.
-    Returns responses in Cursor/Windsurf style with function calls.
+    Conversational agent that generates responses using OpenAI.
+    All memory operations are handled by MemoryService.js - no function calling needed.
+    Returns structured responses compatible with Cursor/Windsurf style.
     """
     
     def __init__(self):
@@ -34,154 +29,14 @@ class ConversationalAgentWithFunctionCalling:
         self.model = os.getenv('OPENAI_MODEL', 'gpt-4-turbo-preview')
         
         # Define available functions for OpenAI function calling
-        self.functions = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "retrieve_conversation_history",
-                    "description": "Retrieve conversation history from Pinecone for context. Use this to remember previous messages in the conversation.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "conversation_id": {
-                                "type": "string",
-                                "description": "Unique conversation identifier"
-                            },
-                            "query": {
-                                "type": "string",
-                                "description": "Optional query to find relevant messages (if None, returns all for conversation)"
-                            },
-                            "top_k": {
-                                "type": "integer",
-                                "description": "Number of results to return (default: 10)",
-                                "default": 10
-                            }
-                        },
-                        "required": ["conversation_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "store_conversation_context",
-                    "description": "Store conversation context in Pinecone for memory across agent runs. Use this to save the current conversation turn.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "conversation_id": {
-                                "type": "string",
-                                "description": "Unique conversation identifier"
-                            },
-                            "agent_id": {
-                                "type": "string",
-                                "description": "Identifier of the agent (e.g., 'conversational_agent')"
-                            },
-                            "user_query": {
-                                "type": "string",
-                                "description": "User's query/question"
-                            },
-                            "agent_response": {
-                                "type": "string",
-                                "description": "Agent's response"
-                            },
-                            "context": {
-                                "type": "object",
-                                "description": "Optional additional context"
-                            }
-                        },
-                        "required": ["conversation_id", "agent_id", "user_query", "agent_response"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_agent_knowledge",
-                    "description": "Search for similar past conversations or agent executions in Pinecone. Use this to find relevant past solutions or similar queries.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Natural language query describing what you're looking for"
-                            },
-                            "agent_id": {
-                                "type": "string",
-                                "description": "Optional filter by specific agent"
-                            },
-                            "top_k": {
-                                "type": "integer",
-                                "description": "Number of results to return (default: 5)",
-                                "default": 5
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }
-        ]
+        # Note: All Pinecone operations (retrieval and storage) are handled by MemoryService.js
+        # No Pinecone function calling needed - conversation history is pre-loaded and storage is handled server-side
+        self.functions = []  # No function calling needed - all operations handled by MemoryService.js
     
     def _execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a function call and return the result."""
-        import logging
-        logger = logging.getLogger("ConversationalAgent")
-        
-        try:
-            # Auto-correct conversation_id if agent provided wrong one
-            if hasattr(self, '_current_conversation_id') and self._current_conversation_id:
-                if 'conversation_id' in arguments:
-                    # If agent provided a conversation_id, check if it's reasonable
-                    provided_id = arguments.get("conversation_id", "")
-                    # If it's a generic ID like "1", "conversation", etc., replace with actual ID
-                    if provided_id in ["1", "conversation", "conv", ""] or len(provided_id) < 5:
-                        logger.info(f"🔧 Auto-correcting conversation_id from '{provided_id}' to '{self._current_conversation_id}'")
-                        arguments["conversation_id"] = self._current_conversation_id
-                    # Otherwise, trust the agent's provided ID (might be for a different conversation)
-                else:
-                    # If no conversation_id provided, use the current one
-                    logger.info(f"🔧 Adding missing conversation_id: '{self._current_conversation_id}'")
-                    arguments["conversation_id"] = self._current_conversation_id
-            
-            if function_name == "retrieve_conversation_history":
-                conv_id = arguments.get("conversation_id")
-                query = arguments.get("query")
-                top_k = arguments.get("top_k", 10)
-                logger.info(f"🔍 Executing retrieve_conversation_history: conversation_id={conv_id}, top_k={top_k}")
-                
-                # Call the underlying function directly (not the tool wrapper)
-                from tools.pinecone_tools import get_conversation_history
-                result = get_conversation_history(
-                    conversation_id=conv_id,
-                    query=query,
-                    top_k=top_k
-                )
-                
-                logger.info(f"✅ Retrieved {result.get('count', 0)} messages for conversation_id={conv_id}")
-                return result
-            elif function_name == "store_conversation_context":
-                # Also auto-correct conversation_id for store function
-                if hasattr(self, '_current_conversation_id') and self._current_conversation_id:
-                    if 'conversation_id' not in arguments or arguments.get("conversation_id") in ["1", "conversation", "conv", ""]:
-                        arguments["conversation_id"] = self._current_conversation_id
-                
-                return store_conversation_context(
-                    conversation_id=arguments.get("conversation_id"),
-                    agent_id=arguments.get("agent_id", "conversational_agent"),
-                    user_query=arguments.get("user_query"),
-                    agent_response=arguments.get("agent_response"),
-                    context=arguments.get("context")
-                )
-            elif function_name == "search_agent_knowledge":
-                return search_agent_knowledge(
-                    query=arguments.get("query"),
-                    agent_id=arguments.get("agent_id"),
-                    top_k=arguments.get("top_k", 5)
-                )
-            else:
-                return {"error": f"Unknown function: {function_name}"}
-        except Exception as e:
-            return {"error": str(e)}
+        # No function calling needed - all Pinecone operations handled by MemoryService.js
+        return {"error": f"No functions available - all operations handled by MemoryService.js"}
     
     def generate_response(
         self,
@@ -191,53 +46,87 @@ class ConversationalAgentWithFunctionCalling:
         context: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
-        Generate a conversational response using OpenAI function calling.
-        Returns structured response with function calls (Cursor/Windsurf style).
-        
-        Args:
-            user_query: User's query
-            conversation_id: Conversation identifier (will be used for all function calls)
-            conversation_history: Previous conversation messages
-            context: Additional context
-            
-        Returns:
-            Dict with 'response', 'function_calls', and 'metadata'
-        """
-        # Store conversation_id for function execution
-        self._current_conversation_id = conversation_id
-        """
-        Generate a conversational response using OpenAI function calling.
-        Returns structured response with function calls (Cursor/Windsurf style).
+        Generate a conversational response using OpenAI.
+        All memory operations are handled by MemoryService.js.
         
         Args:
             user_query: User's query
             conversation_id: Conversation identifier
-            conversation_history: Previous conversation messages
-            context: Additional context
+            conversation_history: Previous conversation messages (pre-loaded by MemoryService.js)
+            context: Additional context (problem type, workflow stage, etc.)
             
         Returns:
-            Dict with 'response', 'function_calls', and 'metadata'
+            Dict with 'response', 'function_calls' (empty), and 'metadata'
         """
-        # Build system message with conversation_id
-        system_message = f"""You are a friendly and knowledgeable AI assistant powered by OpenAI function calling.
-You excel at:
-- Understanding user queries in natural language
-- Providing clear, concise, and helpful responses
-- Remembering previous conversations using Pinecone memory
-- Referencing past interactions when relevant
-- Maintaining context across multiple conversation turns
+        # Store conversation_id (for potential future use)
+        self._current_conversation_id = conversation_id
+        
+        # Extract problem context from context if available
+        problem_type = context.get('problem_type', 'general')
+        problem_space = context.get('problem_space', '')
+        workflow_stage = context.get('workflow_stage', 'interpret')
+        datasource = context.get('datasource', None)
+        
+        # Build system message with conversation_id and problem-first approach
+        system_message = f"""You are a business intelligence assistant for executives, operating on a problem-first approach.
 
-IMPORTANT: The current conversation ID is: {conversation_id}
-When calling functions that require conversation_id, you MUST use this exact ID: "{conversation_id}"
+CORE PRINCIPLES:
+1. The system always starts with a narrowly defined problem space - executives don't ask "anything", they start with specific problems
+2. Problem types: alert (risks/alerts), understand (analysis/insights), solve (solutions), monitor (tracking), automate (workflows)
+3. Workflow progression: interpret outputs → ask for recommendation → ask "what if" (simulator) → then full LLM questions
+4. You help interpret outputs, provide recommendations, run simulations, and answer questions within the problem context
 
-Your workflow:
-1. Use retrieve_conversation_history to get context from previous messages (use conversation_id: "{conversation_id}")
-2. Use search_agent_knowledge if you need to find similar past conversations
-3. Generate a natural, conversational response
-4. Use store_conversation_context to save the conversation for future reference (use conversation_id: "{conversation_id}")
+CURRENT CONTEXT:
+- Conversation ID: {conversation_id}
+- Problem Type: {problem_type}
+- Problem Space: {problem_space if problem_space else 'Not yet defined'}
+- Workflow Stage: {workflow_stage}
+- Datasource Available: {'Yes' if datasource else 'No'}
 
-Always be helpful, accurate, and maintain a friendly professional tone.
-When you need to retrieve or store information, use the available functions with the correct conversation_id."""
+WORKFLOW STAGES:
+1. **interpret** - First stage: Interpret datasource
+   - ONLY use this when there is a datasource from datacube
+   - Explain what the datasource means, what it represents
+   - Identify key insights, patterns, and trends in the datasource
+   - If there is NO datasource, SKIP to "full-llm" stage instead
+   - Example: "Here's what the datasource shows: [interpreting the datasource]"
+   - NOT: "I need more information" (that's full-llm, not interpret)
+
+2. **recommend** - Second stage: Provide recommendations based on interpreted outputs
+   - Suggest actions or decisions based on the interpreted data
+   - Provide actionable insights derived from the interpretation
+   - Consider business implications of the interpreted results
+
+3. **what-if** - Third stage: Run simulations or "what if" scenarios
+   - Explore alternative scenarios based on interpreted data
+   - Model different outcomes using the interpreted insights
+   - Help with decision-making through simulation
+
+4. **full-llm** - Final stage: Full LLM capabilities for complex questions
+   - Use when there are NO outputs/data to interpret (setup tasks, configuration)
+   - Answer complex questions requiring deep knowledge
+   - Help set up systems, define criteria, explain concepts
+   - Provide comprehensive analysis when data interpretation isn't applicable
+   - Example: "To set up alerts, you need to define: [explaining setup requirements]"
+
+YOUR ROLE:
+- You operate within the defined problem space - stay focused on the executive's problem
+- Guide the conversation through workflow stages naturally
+- Remember: This is NOT "ask me anything" - it's problem-focused with narrow scope
+- You can still answer general questions, but always relate them back to the problem context when possible
+- All conversation memory is handled automatically by MemoryService.js - just focus on providing helpful responses
+
+CRITICAL: Workflow Stage Selection
+- If the user query asks to SET UP, CONFIGURE, or DEFINE something (like "alert me if...", "monitor...", "automate...") and there is NO datasource, you should respond as if in "full-llm" stage, not "interpret" stage
+- "interpret" stage is ONLY for when there is a datasource from datacube
+- For setup/configuration queries without a datasource, use "full-llm" behavior even if workflow_stage says "interpret"
+
+IMPORTANT:
+1. Conversation history is pre-loaded for you by MemoryService.js - use the conversation_history provided in the context.
+2. All conversation storage is handled automatically by MemoryService.js - you don't need to call any functions to save conversations.
+3. Focus on providing helpful responses within the problem space - all memory operations are handled server-side.
+
+Your goal is to provide the best answer within the problem space, guide through workflow stages, and use tools when they add value."""
 
         # Build messages
         messages = [{"role": "system", "content": system_message}]
@@ -253,93 +142,19 @@ When you need to retrieve or store information, use the available functions with
         # Add current user query
         messages.append({"role": "user", "content": user_query})
         
-        # Call OpenAI with function calling
+        # Call OpenAI (no function calling - all operations handled by MemoryService.js)
         response = self.openai_client.chat.completions.create(
             model=self.model,
             messages=messages,
-            tools=self.functions,
-            tool_choice="auto",  # Let the model decide when to use functions
             temperature=0.7,
             max_tokens=2000
         )
         
         message = response.choices[0].message
-        function_calls = []
-        final_response = ""
+        function_calls = []  # Empty - no function calling needed
         
-        # Handle function calls
-        if message.tool_calls:
-            # Execute function calls
-            messages.append(message)  # Add assistant's message with tool calls
-            
-            for tool_call in message.tool_calls:
-                function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments)
-                
-                # Execute function
-                function_result = self._execute_function(function_name, function_args)
-                
-                # Add function result to messages
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": function_name,
-                    "content": json.dumps(function_result)
-                })
-                
-                function_calls.append({
-                    "id": tool_call.id,
-                    "name": function_name,
-                    "arguments": function_args,
-                    "result": function_result
-                })
-            
-            # Get final response after function execution
-            final_response_obj = self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=self.functions,
-                tool_choice="auto",
-                temperature=0.7,
-                max_tokens=2000
-            )
-            
-            final_message = final_response_obj.choices[0].message
-            final_response = final_message.content or ""
-            
-            # Check if there are more function calls needed
-            if final_message.tool_calls:
-                # Recursively handle additional function calls (up to 3 iterations)
-                for tool_call in final_message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-                    function_result = self._execute_function(function_name, function_args)
-                    
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": function_name,
-                        "content": json.dumps(function_result)
-                    })
-                    
-                    function_calls.append({
-                        "id": tool_call.id,
-                        "name": function_name,
-                        "arguments": function_args,
-                        "result": function_result
-                    })
-                
-                # Get final response
-                final_response_obj = self.openai_client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=2000
-                )
-                final_response = final_response_obj.choices[0].message.content or ""
-        else:
-            # No function calls, just text response
-            final_response = message.content or ""
+        # Simple text response - no function calling
+        final_response = message.content or ""
         
         return {
             "response": final_response,

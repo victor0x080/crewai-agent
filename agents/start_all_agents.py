@@ -181,12 +181,16 @@ def start_crewai_agents():
         logger.error(f"❌ CrewAI Python directory not found: {crewai_dir}")
         return
     
-    # Only start conversational agent
+    # Start conversational agent
     logger.info("\n📋 Starting Conversational Agent...")
     start_conversational_agent(crewai_dir)
     
-    # All other agents are disabled - only conversational agent runs
-    logger.info("\n⚠️  All other agents disabled - only conversational agent is running")
+    # Start contact center coaching crew
+    logger.info("\n📋 Starting Contact Center Coaching Crew...")
+    start_contact_center_coaching_crew(crewai_dir)
+    
+    # All other agents are disabled - only conversational and coaching agents run
+    logger.info("\n⚠️  All other agents disabled - only conversational and coaching agents are running")
 
 
 def start_conversational_agent(crewai_dir):
@@ -227,8 +231,46 @@ def start_conversational_agent(crewai_dir):
         logger.error(f"   ❌ Failed to start conversational agent: {e}")
 
 
+def start_contact_center_coaching_crew(crewai_dir):
+    """Start the contact center coaching CrewAI crew"""
+    runner_path = crewai_dir / 'runners' / 'contact_center_coaching_runner.py'
+    
+    if not runner_path.exists():
+        logger.error(f"❌ Contact center coaching runner not found: {runner_path}")
+        return
+    
+    try:
+        # Pass API_URL environment variable to child process
+        env = os.environ.copy()
+        api_url = os.getenv('API_URL', 'http://localhost:3001')
+        env['API_URL'] = api_url
+        # Use isolated CrewAI storage for coaching crew
+        env['CREWAI_STORAGE_DIR'] = 'crewai_storage_coaching'
+        
+        proc = subprocess.Popen(
+            [PYTHON_CMD, str(runner_path)],
+            cwd=str(crewai_dir),
+            stdout=None,  # Inherit parent's stdout (goes to log file)
+            stderr=None,  # Inherit parent's stderr (goes to log file)
+            env=env
+        )
+        
+        # Check if process started successfully
+        time.sleep(0.5)
+        if proc.poll() is not None:
+            exit_code = proc.returncode
+            logger.error(f"❌ Contact center coaching crew crashed immediately (exit code: {exit_code})")
+            return
+        
+        processes.append(('crewai', 'contact_center_coaching', proc))
+        logger.info(f"   ✅ Started contact center coaching crew (PID: {proc.pid}) with API_URL={api_url}")
+        logger.info(f"   📡 Listening on stream: stream:route.decisions:coaching-manager")
+    except Exception as e:
+        logger.error(f"   ❌ Failed to start contact center coaching crew: {e}")
+
+
 def start_crewai_agent(runner_script, agent_id, crewai_dir):
-    """Start a single CrewAI agent (disabled - only conversational agent runs)"""
+    """Start a single CrewAI agent (disabled - only conversational and coaching agents run)"""
     # This function is kept for compatibility but not used
     pass
 

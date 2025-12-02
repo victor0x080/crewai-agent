@@ -201,7 +201,7 @@ export default class CrewAIBridgeService {
           task_id: taskId,
           agent_id: agentId,
           task_type: task.type || 'generic',
-          task_description: task.description || task.title || '',
+          task_description: task.task_description || task.description || task.title || '',
           inputs: task.inputs || {},
           priority: task.priority || 'medium',
           timestamp: new Date().toISOString(),
@@ -312,7 +312,14 @@ export default class CrewAIBridgeService {
                 const errorMsg = eventData.data.error || result;
                 pending.resolve({ success: false, result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, error: errorMsg, history_length: historyLength }, taskId, agentId });
               } else {
-                pending.resolve({ success: status === 'success', result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, history_length: historyLength }, taskId, agentId });
+                const data = eventData.data || {};
+                const extra = {
+                  function_calls: Array.isArray(data.function_calls) ? data.function_calls : [],
+                  metadata: typeof data.metadata === 'object' && data.metadata !== null ? data.metadata : undefined,
+                  processingTime: data.processing_time || undefined,
+                  status: data.status || status
+                };
+                pending.resolve({ success: status === 'success', result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, history_length: historyLength }, taskId, agentId, ...extra });
               }
             }
             return; // resolved from pre-check
@@ -390,7 +397,14 @@ export default class CrewAIBridgeService {
                     const errorMsg = eventData.data.error || result;
                     pending.resolve({ success: false, result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, error: errorMsg, history_length: historyLength }, taskId, agentId });
                   } else {
-                    pending.resolve({ success: status === 'success', result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, history_length: historyLength }, taskId, agentId });
+                    const data = eventData.data || {};
+                    const extra = {
+                      function_calls: Array.isArray(data.function_calls) ? data.function_calls : [],
+                      metadata: typeof data.metadata === 'object' && data.metadata !== null ? data.metadata : undefined,
+                      processingTime: data.processing_time || undefined,
+                      status: data.status || status
+                    };
+                    pending.resolve({ success: status === 'success', result: { output: typeof result === 'string' ? result : JSON.stringify(result), agent: agentId, eventId, taskId: responseTaskId || taskId, history_length: historyLength }, taskId, agentId, ...extra });
                   }
                   return; // Exit when match found
                 }
@@ -558,11 +572,33 @@ export default class CrewAIBridgeService {
 
       // Resolve or reject promise
       if (status === 'success') {
+        // Preserve additional metadata from the Python agent payload when available
+        const payload = message;
+        // message.result is JSON string of the agent envelope; parse was done above to 'result'
+        // The original event data may include function_calls, metadata, processing_time, etc.
+        let extra = {};
+        try {
+          const eventDataJson = await this.redis.get(`event:${message.event_id}`);
+          if (eventDataJson) {
+            const eventData = JSON.parse(eventDataJson);
+            const data = eventData?.data || {};
+            extra = {
+              function_calls: Array.isArray(data.function_calls) ? data.function_calls : [],
+              metadata: typeof data.metadata === 'object' && data.metadata !== null ? data.metadata : undefined,
+              processingTime: data.processing_time || undefined,
+              status: data.status || status
+            };
+          }
+        } catch (_) {
+          // Best effort; ignore enrich errors
+        }
+
         pending.resolve({
           success: true,
           result,
           taskId,
-          agentId: message.agent_id
+          agentId: message.agent_id,
+          ...extra
         });
       } else {
         pending.reject(new Error(error || 'Agent execution failed'));
